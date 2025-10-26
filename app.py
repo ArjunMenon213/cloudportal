@@ -9,7 +9,6 @@ st.set_page_config(page_title="TRACKER", layout="wide")
 TITLE = "TRACKER : Automated tool inventory management online inventory management portal"
 
 def init_data():
-    # sample inventory
     inventory = pd.DataFrame([
         {"id": 1, "name": "Cordless Drill", "category": "Power Tools", "quantity": 5, "location": "Shelf A1", "status": "available", "last_updated": datetime.now().isoformat()},
         {"id": 2, "name": "Hammer", "category": "Hand Tools", "quantity": 10, "location": "Shelf B3", "status": "available", "last_updated": (datetime.now()-timedelta(days=1)).isoformat()},
@@ -17,7 +16,6 @@ def init_data():
         {"id": 4, "name": "Safety Glasses", "category": "PPE", "quantity": 0, "location": "Shelf D1", "status": "missing", "last_updated": (datetime.now()-timedelta(days=5)).isoformat()},
         {"id": 5, "name": "Screwdriver Set", "category": "Hand Tools", "quantity": 3, "location": "Shelf B1", "status": "available", "last_updated": datetime.now().isoformat()},
     ])
-    # sample usage history
     usage = pd.DataFrame([
         {"event_id": 101, "item_id": 3, "item_name": "Multimeter", "user": "alice", "action": "checked_out", "timestamp": (datetime.now()-timedelta(days=2)).isoformat()},
         {"event_id": 102, "item_id": 1, "item_name": "Cordless Drill", "user": "bob", "action": "checked_out", "timestamp": (datetime.now()-timedelta(hours=5)).isoformat()},
@@ -27,30 +25,21 @@ def init_data():
     users = ["alice", "bob", "charlie", "admin"]
     return inventory, usage, users
 
-# Initialize session state and demo data
+# Initialize demo data and state
 if "inventory_df" not in st.session_state:
     inv, usage, users = init_data()
     st.session_state.inventory_df = inv
     st.session_state.usage_df = usage
     st.session_state.users = users
     st.session_state.selected = "Status"
-    st.session_state.master_control = True  # default state for the visible switch
+    st.session_state.master_control = True
 
-# Styling for improved contrast and visible clock
+# Minimal styling: keep Streamlit defaults for typography; only style the ONLINE pill slightly.
 st.markdown(
     """
     <style>
-    /* tab bar */
-    .tab-button {width:100%; padding:6px 8px; border-radius:6px;}
-    .tab-active {background-color:#0f62fe;color:white;}
-    /* status row layout */
-    .status-row {display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom: 1px solid #f3f4f6;}
-    .status-label {min-width:260px; color:#0b3b6e; font-weight:700; font-size:14px;} /* darker blue for labels */
-    .status-value {font-weight:700; color:#0b4a6f; font-size:14px;} /* readable blue for values */
-    .status-pill {display:inline-block; padding:6px 14px; border-radius:16px; color:white; font-weight:800; background:#16a34a;}
-    .clock {font-family:monospace; font-weight:800; color:#b45309; background:#fff7ed; padding:6px 10px; border-radius:8px; border:1px solid #f6ad55;}
-    .panel {padding:6px 4px;}
-    .switch-checkbox > label {vertical-align: middle;}
+    .tab-button { padding:6px 8px; border-radius:6px; }
+    .status-pill { display:inline-block; padding:6px 12px; border-radius:14px; color:#ffffff; font-weight:700; background:#16a34a; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -58,7 +47,7 @@ st.markdown(
 
 st.title(TITLE)
 
-# horizontal option bar implemented with columns + buttons
+# Top nav bar (buttons)
 options = ["Status", "Usage History", "Inventory Data", "Missing Items", "Admin Panel"]
 cols = st.columns([1,1,1,1,1], gap="small")
 for i, opt in enumerate(options):
@@ -69,76 +58,62 @@ for i, opt in enumerate(options):
 pane = st.container()
 
 def show_status():
-    """
-    Render the status panel exactly as requested:
-    - Current Status: ONLINE (green pill)
-    - Master Control: an on/off switch (checkbox) that toggles visually
-    - Current Time: browser clock (client-side) displayed live
-    - Current Location: static text
-    - Current Room: static text
-    Each item is shown on one horizontal line with improved color contrast.
-    """
     st.subheader("Status Panel")
-    with st.container():
-        # Row 1: Current Status (static green pill)
-        r1_col = st.columns([2,4])
-        with r1_col[0]:
-            st.markdown('<div class="status-label">1. Current Status</div>', unsafe_allow_html=True)
-        with r1_col[1]:
-            st.markdown('<div class="status-value"><span class="status-pill">ONLINE</span></div>', unsafe_allow_html=True)
 
-        # Row 2: Master Control (switch/checkbox)
-        r2_col = st.columns([2,4])
-        with r2_col[0]:
-            st.markdown('<div class="status-label">2. Master Control</div>', unsafe_allow_html=True)
-        with r2_col[1]:
-            # render a checkbox as an on/off switch; it does not change other app behavior
-            master = st.checkbox(label=" ", value=st.session_state.master_control, key="master_control_checkbox")
-            mc_text = "ON" if master else "OFF"
-            mc_color = "#16a34a" if master else "#ef4444"
-            st.markdown(
-                f'<div class="status-value" style="display:inline-block;padding-left:8px;"><span style="display:inline-block;padding:6px 12px;border-radius:10px;background:{mc_color};color:#fff;font-weight:800;">{mc_text}</span></div>',
-                unsafe_allow_html=True
-            )
-            st.session_state.master_control = master
+    # Use Streamlit default text sizes and coloring by avoiding custom CSS for labels/values.
+    # Layout with two columns so label : value appear on one horizontal line each.
+    # Row 1: Current Status - green pill
+    c1, c2 = st.columns([2, 4])
+    with c1:
+        st.write("1. Current Status")
+    with c2:
+        st.markdown('<span class="status-pill">ONLINE</span>', unsafe_allow_html=True)
 
-        # Row 3: Current Time (client-side/browser) - label simplified and clock shown
-        r3_col = st.columns([2,4])
-        with r3_col[0]:
-            st.markdown('<div class="status-label">3. Current Time</div>', unsafe_allow_html=True)
-        with r3_col[1]:
-            # client-side clock using JS so it shows browser time and updates every second
-            clock_html = """
-            <div style="display:flex; align-items:center;">
-              <div id="client-clock" class="clock">--</div>
-            </div>
-            <script>
-              function pad(n){ return n.toString().padStart(2,'0'); }
-              function updateClock(){
-                const now = new Date();
-                const s = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate())
-                          + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
-                document.getElementById('client-clock').textContent = s;
-              }
-              updateClock();
-              setInterval(updateClock, 1000);
-            </script>
-            """
-            components.html(clock_html, height=48)
+    # Row 2: Master Control - checkbox that toggles visually only
+    c1, c2 = st.columns([2, 4])
+    with c1:
+        st.write("2. Master Control")
+    with c2:
+        master = st.checkbox("", value=st.session_state.master_control, key="master_control_checkbox")
+        st.write("ON" if master else "OFF")
+        st.session_state.master_control = master
 
-        # Row 4: Current Location (static)
-        r4_col = st.columns([2,4])
-        with r4_col[0]:
-            st.markdown('<div class="status-label">4. Current Location</div>', unsafe_allow_html=True)
-        with r4_col[1]:
-            st.markdown('<div class="status-value">Lehman Building of engineering</div>', unsafe_allow_html=True)
+    # Row 3: Current Time - show browser time via client-side JS; no custom font sizing so Streamlit default applies
+    c1, c2 = st.columns([2, 4])
+    with c1:
+        st.write("3. Current Time")
+    with c2:
+        clock_html = """
+        <div>
+          <span id="client-clock">--</span>
+        </div>
+        <script>
+          function pad(n){ return n.toString().padStart(2,'0'); }
+          function updateClock(){
+            const now = new Date();
+            const s = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate())
+                      + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+            document.getElementById('client-clock').textContent = s;
+          }
+          updateClock();
+          setInterval(updateClock, 1000);
+        </script>
+        """
+        components.html(clock_html, height=40)
 
-        # Row 5: Current Room (static)
-        r5_col = st.columns([2,4])
-        with r5_col[0]:
-            st.markdown('<div class="status-label">5. Current Room</div>', unsafe_allow_html=True)
-        with r5_col[1]:
-            st.markdown('<div class="status-value">LB 172 - Robotics Research Lab</div>', unsafe_allow_html=True)
+    # Row 4: Current Location (static)
+    c1, c2 = st.columns([2, 4])
+    with c1:
+        st.write("4. Current Location")
+    with c2:
+        st.write("Lehman Building of engineering")
+
+    # Row 5: Current Room (static)
+    c1, c2 = st.columns([2, 4])
+    with c1:
+        st.write("5. Current Room")
+    with c2:
+        st.write("LB 172 - Robotics Research Lab")
 
 def show_usage_history():
     usage_df = st.session_state.usage_df
@@ -191,7 +166,6 @@ def show_inventory_data():
                 st.success(f"Added item '{name}' (id: {new_id})")
 
     st.download_button("Download inventory CSV", data=st.session_state.inventory_df.to_csv(index=False), file_name="inventory_export.csv", mime="text/csv")
-
     st.subheader("Inventory Table")
     st.dataframe(st.session_state.inventory_df.sort_values(["category", "name"]).reset_index(drop=True))
 
@@ -203,7 +177,6 @@ def show_missing_items():
         st.success("No missing items! Great job.")
         return
     st.dataframe(missing_df.reset_index(drop=True))
-
     st.write("Actions")
     rows = missing_df.to_dict("records")
     for item in rows:
@@ -222,7 +195,6 @@ def show_missing_items():
 def show_admin_panel():
     st.subheader("Admin Panel")
     st.write("Manage users and global settings. This is a simplified admin view for the demo.")
-
     st.write("Registered users")
     st.dataframe(pd.DataFrame({"user": st.session_state.users}))
 
