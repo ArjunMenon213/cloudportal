@@ -34,7 +34,6 @@ if "inventory_df" not in st.session_state:
     st.session_state.users = users
     st.session_state.selected = "Status"
     # status panel controls
-    st.session_state.online = True  # Currently Online
     st.session_state.master_control = True  # Master control ON/OFF
     st.session_state.current_location = "Lehman Building of engineering"
     st.session_state.current_room = "LB 172 - Robotics Research Lab"
@@ -69,7 +68,6 @@ options = ["Status", "Usage History", "Inventory Data", "Missing Items", "Admin 
 cols = st.columns([1,1,1,1,1], gap="small")
 for i, opt in enumerate(options):
     with cols[i]:
-        # We display the active option visually by appending " (active)" or using session state
         if st.button(opt, key=f"btn_{opt}"):
             st.session_state.selected = opt
 
@@ -83,33 +81,26 @@ def show_status():
     # Container for vertical list
     container = st.container()
 
-    # Currently Online: ONLINE/Offline status indicating button
+    # 1. Currently Online — always show ONLINE (static, no toggles)
     with container:
         st.markdown('<div class="panel-row">', unsafe_allow_html=True)
         st.markdown('<div class="panel-label">1. Currently Online</div>', unsafe_allow_html=True)
-        status_text = "ONLINE" if st.session_state.online else "OFFLINE"
-        status_class = "status-online" if st.session_state.online else "status-offline"
-        st.markdown(f'<div class="status-pill {status_class}">{status_text}</div>', unsafe_allow_html=True)
-        # Toggle button to flip online/offline
-        if st.button("Toggle Online/Offline", key="toggle_online"):
-            st.session_state.online = not st.session_state.online
-            st.experimental_rerun()
+        # Static ONLINE pill (always online)
+        st.markdown(f'<div class="status-pill status-online">ONLINE</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Master Control: ON/OFF switch (checkbox)
+    # 2. Master Control: ON/OFF switch (checkbox)
     with container:
         st.markdown('<div class="panel-row">', unsafe_allow_html=True)
         st.markdown('<div class="panel-label">2. Master Control</div>', unsafe_allow_html=True)
-        # Use checkbox as an obvious ON/OFF switch. Checkbox reflects/sets master_control state.
         master = st.checkbox("Master Control (ON / OFF)", value=st.session_state.master_control, key="master_control_checkbox")
         st.session_state.master_control = master
-        # Show a small indicator for master control state
         mc_text = "ON" if st.session_state.master_control else "OFF"
         mc_class = "status-online" if st.session_state.master_control else "status-offline"
         st.markdown(f'<div style="margin-top:6px;"><span class="status-pill {mc_class}">{mc_text}</span></div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Current Time
+    # 3. Current Time
     with container:
         st.markdown('<div class="panel-row">', unsafe_allow_html=True)
         st.markdown('<div class="panel-label">3. Current Time</div>', unsafe_allow_html=True)
@@ -119,16 +110,15 @@ def show_status():
             st.experimental_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Current Location
+    # 4. Current Location
     with container:
         st.markdown('<div class="panel-row">', unsafe_allow_html=True)
         st.markdown('<div class="panel-label">4. Current Location</div>', unsafe_allow_html=True)
-        # Display and allow small edit if needed
         loc = st.text_input("Location", value=st.session_state.current_location, key="location_input")
         st.session_state.current_location = loc
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Current Room
+    # 5. Current Room
     with container:
         st.markdown('<div class="panel-row">', unsafe_allow_html=True)
         st.markdown('<div class="panel-label">5. Current Room</div>', unsafe_allow_html=True)
@@ -138,8 +128,8 @@ def show_status():
 
     st.markdown("---")
     st.write("Notes:")
-    st.write("- Use 'Toggle Online/Offline' to change the online status pill.")
-    st.write("- 'Master Control' checkbox acts as a global ON/OFF switch. You can wire this to other app behaviors later.")
+    st.write("- 'Currently Online' always displays ONLINE as requested.")
+    st.write("- 'Master Control' checkbox acts as a global ON/OFF switch and is stored in session_state for this session.")
     st.write("- Edit Location and Room inline; values are kept in session_state for the session.")
 
 def show_usage_history():
@@ -255,7 +245,6 @@ def show_admin_panel():
         st.session_state.usage_df = usage
         st.session_state.users = users
         # reset status panel controls
-        st.session_state.online = True
         st.session_state.master_control = True
         st.session_state.current_location = "Lehman Building of engineering"
         st.session_state.current_room = "LB 172 - Robotics Research Lab"
