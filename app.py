@@ -26,20 +26,37 @@ def init_data():
     users = ["alice", "bob", "charlie", "admin"]
     return inventory, usage, users
 
+# Initialize session state and demo data
 if "inventory_df" not in st.session_state:
     inv, usage, users = init_data()
     st.session_state.inventory_df = inv
     st.session_state.usage_df = usage
     st.session_state.users = users
     st.session_state.selected = "Status"
+    # status panel controls
+    st.session_state.online = True  # Currently Online
+    st.session_state.master_control = True  # Master control ON/OFF
+    st.session_state.current_location = "Lehman Building of engineering"
+    st.session_state.current_room = "LB 172 - Robotics Research Lab"
 
-# Small styling to make the bar compact
+# Small styling to make the bar compact and status indicator
 st.markdown(
     """
     <style>
     .small-bar {margin-top: -10px;}
     .tab-button {width:100%; padding:6px 8px; border-radius:6px;}
     .tab-active {background-color:#0f62fe;color:white;}
+    .status-pill {
+        display:inline-block;
+        padding:6px 12px;
+        border-radius:12px;
+        color:white;
+        font-weight:600;
+    }
+    .status-online { background-color: #16a34a; } /* green */
+    .status-offline { background-color: #ef4444; } /* red */
+    .panel-label {font-weight:600; color:#333; margin-bottom:4px;}
+    .panel-row {margin-bottom:12px;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -60,30 +77,70 @@ for i, opt in enumerate(options):
 pane = st.container()
 
 def show_status():
-    inventory_df = st.session_state.inventory_df
-    total_items = len(inventory_df)
-    total_quantity = int(inventory_df["quantity"].sum())
-    missing = inventory_df[inventory_df["status"] == "missing"]
-    checked_out = inventory_df[inventory_df["status"] == "checked_out"]
+    # This function renders the vertical status panel requested by the user.
+    st.subheader("Status Panel")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total SKUs", total_items)
-    c2.metric("Total Quantity", total_quantity)
-    c3.metric("Checked Out SKUs", len(checked_out))
-    c4.metric("Missing SKUs", len(missing))
+    # Container for vertical list
+    container = st.container()
 
-    st.subheader("Inventory by Category")
-    cat_chart = alt.Chart(inventory_df).mark_bar().encode(
-        x=alt.X("category:N", sort='-y'),
-        y=alt.Y("sum(quantity):Q", title="Total Quantity"),
-        color="category:N",
-        tooltip=["category", "sum(quantity)"]
-    ).properties(height=300)
-    st.altair_chart(cat_chart, use_container_width=True)
+    # Currently Online: ONLINE/Offline status indicating button
+    with container:
+        st.markdown('<div class="panel-row">', unsafe_allow_html=True)
+        st.markdown('<div class="panel-label">1. Currently Online</div>', unsafe_allow_html=True)
+        status_text = "ONLINE" if st.session_state.online else "OFFLINE"
+        status_class = "status-online" if st.session_state.online else "status-offline"
+        st.markdown(f'<div class="status-pill {status_class}">{status_text}</div>', unsafe_allow_html=True)
+        # Toggle button to flip online/offline
+        if st.button("Toggle Online/Offline", key="toggle_online"):
+            st.session_state.online = not st.session_state.online
+            st.experimental_rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    st.subheader("Recently updated items")
-    recent = inventory_df.sort_values("last_updated", ascending=False).head(10)
-    st.dataframe(recent.reset_index(drop=True))
+    # Master Control: ON/OFF switch (checkbox)
+    with container:
+        st.markdown('<div class="panel-row">', unsafe_allow_html=True)
+        st.markdown('<div class="panel-label">2. Master Control</div>', unsafe_allow_html=True)
+        # Use checkbox as an obvious ON/OFF switch. Checkbox reflects/sets master_control state.
+        master = st.checkbox("Master Control (ON / OFF)", value=st.session_state.master_control, key="master_control_checkbox")
+        st.session_state.master_control = master
+        # Show a small indicator for master control state
+        mc_text = "ON" if st.session_state.master_control else "OFF"
+        mc_class = "status-online" if st.session_state.master_control else "status-offline"
+        st.markdown(f'<div style="margin-top:6px;"><span class="status-pill {mc_class}">{mc_text}</span></div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # Current Time
+    with container:
+        st.markdown('<div class="panel-row">', unsafe_allow_html=True)
+        st.markdown('<div class="panel-label">3. Current Time</div>', unsafe_allow_html=True)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.write(now_str)
+        if st.button("Refresh Time", key="refresh_time"):
+            st.experimental_rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # Current Location
+    with container:
+        st.markdown('<div class="panel-row">', unsafe_allow_html=True)
+        st.markdown('<div class="panel-label">4. Current Location</div>', unsafe_allow_html=True)
+        # Display and allow small edit if needed
+        loc = st.text_input("Location", value=st.session_state.current_location, key="location_input")
+        st.session_state.current_location = loc
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # Current Room
+    with container:
+        st.markdown('<div class="panel-row">', unsafe_allow_html=True)
+        st.markdown('<div class="panel-label">5. Current Room</div>', unsafe_allow_html=True)
+        room = st.text_input("Room", value=st.session_state.current_room, key="room_input")
+        st.session_state.current_room = room
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.write("Notes:")
+    st.write("- Use 'Toggle Online/Offline' to change the online status pill.")
+    st.write("- 'Master Control' checkbox acts as a global ON/OFF switch. You can wire this to other app behaviors later.")
+    st.write("- Edit Location and Room inline; values are kept in session_state for the session.")
 
 def show_usage_history():
     usage_df = st.session_state.usage_df
@@ -197,6 +254,11 @@ def show_admin_panel():
         st.session_state.inventory_df = inv
         st.session_state.usage_df = usage
         st.session_state.users = users
+        # reset status panel controls
+        st.session_state.online = True
+        st.session_state.master_control = True
+        st.session_state.current_location = "Lehman Building of engineering"
+        st.session_state.current_room = "LB 172 - Robotics Research Lab"
         st.success("Demo data reset.")
         st.experimental_rerun()
 
