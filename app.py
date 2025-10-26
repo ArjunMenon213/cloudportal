@@ -36,7 +36,7 @@ if "inventory_df" not in st.session_state:
     st.session_state.selected = "Status"
     st.session_state.master_control = True  # default state for the visible switch
 
-# Styling for the header/tab bar and the status rows
+# Styling for improved contrast and visible clock
 st.markdown(
     """
     <style>
@@ -44,14 +44,13 @@ st.markdown(
     .tab-button {width:100%; padding:6px 8px; border-radius:6px;}
     .tab-active {background-color:#0f62fe;color:white;}
     /* status row layout */
-    .status-row {display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom: 1px solid #f0f0f0;}
-    .status-label {min-width:260px; color:#333; font-weight:700; font-size:14px;}
-    .status-value {font-weight:600; color:#111; font-size:14px;}
-    .status-pill {display:inline-block; padding:6px 12px; border-radius:14px; color:white; font-weight:700; background:#16a34a;}
-    .clock {font-family:monospace; font-weight:700; color:#0b3b6e;}
+    .status-row {display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom: 1px solid #f3f4f6;}
+    .status-label {min-width:260px; color:#0b3b6e; font-weight:700; font-size:14px;} /* darker blue for labels */
+    .status-value {font-weight:700; color:#0b4a6f; font-size:14px;} /* readable blue for values */
+    .status-pill {display:inline-block; padding:6px 14px; border-radius:16px; color:white; font-weight:800; background:#16a34a;}
+    .clock {font-family:monospace; font-weight:800; color:#b45309; background:#fff7ed; padding:6px 10px; border-radius:8px; border:1px solid #f6ad55;}
     .panel {padding:6px 4px;}
-    /* make checkbox label invisible (we use it as a switch control) */
-    .sr-only {position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0;}
+    .switch-checkbox > label {vertical-align: middle;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -71,13 +70,13 @@ pane = st.container()
 
 def show_status():
     """
-    Render the status panel as requested:
+    Render the status panel exactly as requested:
     - Current Status: ONLINE (green pill)
-    - Master Control: an on/off switch (checkbox) that does nothing except toggle visually
-    - Current Time: browser clock (updates client-side)
+    - Master Control: an on/off switch (checkbox) that toggles visually
+    - Current Time: browser clock (client-side) displayed live
     - Current Location: static text
     - Current Room: static text
-    Each item is shown on a single horizontal line with label on the left and value on the right.
+    Each item is shown on one horizontal line with improved color contrast.
     """
     st.subheader("Status Panel")
     with st.container():
@@ -95,18 +94,20 @@ def show_status():
         with r2_col[1]:
             # render a checkbox as an on/off switch; it does not change other app behavior
             master = st.checkbox(label=" ", value=st.session_state.master_control, key="master_control_checkbox")
-            # reflect the visual ON/OFF next to the checkbox
             mc_text = "ON" if master else "OFF"
             mc_color = "#16a34a" if master else "#ef4444"
-            st.markdown(f'<div class="status-value" style="display:inline-block;padding-left:8px;"><span style="display:inline-block;padding:6px 10px;border-radius:10px;background:{mc_color};color:#fff;font-weight:700;">{mc_text}</span></div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="status-value" style="display:inline-block;padding-left:8px;"><span style="display:inline-block;padding:6px 12px;border-radius:10px;background:{mc_color};color:#fff;font-weight:800;">{mc_text}</span></div>',
+                unsafe_allow_html=True
+            )
             st.session_state.master_control = master
 
-        # Row 3: Current Time (client-side/browser)
+        # Row 3: Current Time (client-side/browser) - label simplified and clock shown
         r3_col = st.columns([2,4])
         with r3_col[0]:
-            st.markdown('<div class="status-label">3. Current Time (browser)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="status-label">3. Current Time</div>', unsafe_allow_html=True)
         with r3_col[1]:
-            # small client-side clock using JS so it shows browser time and updates every second
+            # client-side clock using JS so it shows browser time and updates every second
             clock_html = """
             <div style="display:flex; align-items:center;">
               <div id="client-clock" class="clock">--</div>
@@ -123,7 +124,7 @@ def show_status():
               setInterval(updateClock, 1000);
             </script>
             """
-            components.html(clock_html, height=40)
+            components.html(clock_html, height=48)
 
         # Row 4: Current Location (static)
         r4_col = st.columns([2,4])
