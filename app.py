@@ -34,20 +34,24 @@ if "inventory_df" not in st.session_state:
     st.session_state.usage_df = usage
     st.session_state.users = users
     st.session_state.selected = "Status"
+    st.session_state.master_control = True  # default state for the visible switch
 
 # Styling for the header/tab bar and the status rows
 st.markdown(
     """
     <style>
-    .small-bar {margin-top: -10px;}
+    /* tab bar */
     .tab-button {width:100%; padding:6px 8px; border-radius:6px;}
     .tab-active {background-color:#0f62fe;color:white;}
-    .status-row {display:flex; align-items:center; justify-content:flex-start; gap:12px; padding:8px 0;}
-    .status-label {min-width:220px; color:#333; font-weight:700;}
-    .status-value {font-weight:600; color:#0b6e3a;}
-    .status-pill {display:inline-block; padding:6px 12px; border-radius:12px; color:white; font-weight:600; background:#16a34a;}
-    .panel {padding:8px 4px;}
-    .clock {font-family:monospace; font-weight:600; color:#0b3b6e;}
+    /* status row layout */
+    .status-row {display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom: 1px solid #f0f0f0;}
+    .status-label {min-width:260px; color:#333; font-weight:700; font-size:14px;}
+    .status-value {font-weight:600; color:#111; font-size:14px;}
+    .status-pill {display:inline-block; padding:6px 12px; border-radius:14px; color:white; font-weight:700; background:#16a34a;}
+    .clock {font-family:monospace; font-weight:700; color:#0b3b6e;}
+    .panel {padding:6px 4px;}
+    /* make checkbox label invisible (we use it as a switch control) */
+    .sr-only {position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -67,60 +71,73 @@ pane = st.container()
 
 def show_status():
     """
-    Render a simple vertical list where each line is:
-    Label : Value
-    - Currently Online : ONLINE (static)
-    - Master Control : ON (static)
-    - Current Time : browser time (updates client-side)
-    - Current Location : Lehman Building of engineering (static)
-    - Current Room : LB 172 - Robotics Research Lab (static)
+    Render the status panel as requested:
+    - Current Status: ONLINE (green pill)
+    - Master Control: an on/off switch (checkbox) that does nothing except toggle visually
+    - Current Time: browser clock (updates client-side)
+    - Current Location: static text
+    - Current Room: static text
+    Each item is shown on a single horizontal line with label on the left and value on the right.
     """
     st.subheader("Status Panel")
+    with st.container():
+        # Row 1: Current Status (static green pill)
+        r1_col = st.columns([2,4])
+        with r1_col[0]:
+            st.markdown('<div class="status-label">1. Current Status</div>', unsafe_allow_html=True)
+        with r1_col[1]:
+            st.markdown('<div class="status-value"><span class="status-pill">ONLINE</span></div>', unsafe_allow_html=True)
 
-    # Build a small HTML block for client-side (browser) clock and static rows.
-    html = """
-    <div class="panel">
-      <div class="status-row">
-        <div class="status-label">1. Currently Online</div>
-        <div class="status-value"><span class="status-pill">ONLINE</span></div>
-      </div>
+        # Row 2: Master Control (switch/checkbox)
+        r2_col = st.columns([2,4])
+        with r2_col[0]:
+            st.markdown('<div class="status-label">2. Master Control</div>', unsafe_allow_html=True)
+        with r2_col[1]:
+            # render a checkbox as an on/off switch; it does not change other app behavior
+            master = st.checkbox(label=" ", value=st.session_state.master_control, key="master_control_checkbox")
+            # reflect the visual ON/OFF next to the checkbox
+            mc_text = "ON" if master else "OFF"
+            mc_color = "#16a34a" if master else "#ef4444"
+            st.markdown(f'<div class="status-value" style="display:inline-block;padding-left:8px;"><span style="display:inline-block;padding:6px 10px;border-radius:10px;background:{mc_color};color:#fff;font-weight:700;">{mc_text}</span></div>', unsafe_allow_html=True)
+            st.session_state.master_control = master
 
-      <div class="status-row">
-        <div class="status-label">2. Master Control</div>
-        <div class="status-value">ON</div>
-      </div>
+        # Row 3: Current Time (client-side/browser)
+        r3_col = st.columns([2,4])
+        with r3_col[0]:
+            st.markdown('<div class="status-label">3. Current Time (browser)</div>', unsafe_allow_html=True)
+        with r3_col[1]:
+            # small client-side clock using JS so it shows browser time and updates every second
+            clock_html = """
+            <div style="display:flex; align-items:center;">
+              <div id="client-clock" class="clock">--</div>
+            </div>
+            <script>
+              function pad(n){ return n.toString().padStart(2,'0'); }
+              function updateClock(){
+                const now = new Date();
+                const s = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate())
+                          + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+                document.getElementById('client-clock').textContent = s;
+              }
+              updateClock();
+              setInterval(updateClock, 1000);
+            </script>
+            """
+            components.html(clock_html, height=40)
 
-      <div class="status-row">
-        <div class="status-label">3. Current Time (browser)</div>
-        <div class="status-value"><span id="client-clock" class="clock">--</span></div>
-      </div>
+        # Row 4: Current Location (static)
+        r4_col = st.columns([2,4])
+        with r4_col[0]:
+            st.markdown('<div class="status-label">4. Current Location</div>', unsafe_allow_html=True)
+        with r4_col[1]:
+            st.markdown('<div class="status-value">Lehman Building of engineering</div>', unsafe_allow_html=True)
 
-      <div class="status-row">
-        <div class="status-label">4. Current Location</div>
-        <div class="status-value">Lehman Building of engineering</div>
-      </div>
-
-      <div class="status-row">
-        <div class="status-label">5. Current Room</div>
-        <div class="status-value">LB 172 - Robotics Research Lab</div>
-      </div>
-    </div>
-
-    <script>
-      function pad(n){ return n.toString().padStart(2,'0'); }
-      function updateClock(){
-        const now = new Date();
-        const s = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate())
-                  + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
-        document.getElementById('client-clock').textContent = s;
-      }
-      updateClock();
-      setInterval(updateClock, 1000);
-    </script>
-    """
-
-    # Render the HTML. Height chosen to accommodate the rows.
-    components.html(html, height=220)
+        # Row 5: Current Room (static)
+        r5_col = st.columns([2,4])
+        with r5_col[0]:
+            st.markdown('<div class="status-label">5. Current Room</div>', unsafe_allow_html=True)
+        with r5_col[1]:
+            st.markdown('<div class="status-value">LB 172 - Robotics Research Lab</div>', unsafe_allow_html=True)
 
 def show_usage_history():
     usage_df = st.session_state.usage_df
@@ -232,6 +249,7 @@ def show_admin_panel():
         st.session_state.inventory_df = inv
         st.session_state.usage_df = usage
         st.session_state.users = users
+        st.session_state.master_control = True
         st.success("Demo data reset.")
         st.experimental_rerun()
 
@@ -252,4 +270,4 @@ with pane:
         st.write("Select a section from the bar above.")
 
 st.markdown("----")
-st.caption("This is a demo streamer app. Data is stored only for the current session. For production use, connect to a database and add authentication.")
+st.caption("This is a demo Streamlit app. Data is stored only for the current session. For production use, connect to a database and add authentication.")
