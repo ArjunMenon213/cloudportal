@@ -7,7 +7,7 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="Local Excel Live Viewer", layout="wide")
 
 # CONFIG: set these via environment variables or edit here
-LOCAL_PATH = os.getenv("LOCAL_PATH", "e/arjunmenon/Downloads/OneDrive_1_10-21-2025/tools-drawer1.xlsx)  # <-- set absolute path
+LOCAL_PATH = os.getenv("LOCAL_PATH", "home/arjunmenon/Downloads/OneDrive_1_10-21-2025/tools-drawer1.xlsx)  # <-- set absolute path
 POLL_SECONDS = int(os.getenv("POLL_SECONDS", "300"))  # JS page-reload interval for viewers
 
 st.title("Local Excel Live Viewer")
