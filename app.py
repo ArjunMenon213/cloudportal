@@ -116,33 +116,22 @@ def show_status():
         st.write("LB 172 - Robotics Research Lab")
 
 def show_usage_history():
-    usage_df = st.session_state.usage_df
+    """
+    Replaced previous usage history content with seven 'Drawer' buttons,
+    as requested: Drawer 1 ... Drawer 7.
+    """
     st.subheader("Usage History")
-    col1, col2 = st.columns([2,1])
-    with col1:
-        user_filter = st.selectbox("Filter by user (optional)", options=["All"] + sorted(st.session_state.users))
-    with col2:
-        days = st.selectbox("Last N days", options=[7, 30, 90, 365], index=0)
-    cutoff = datetime.now() - timedelta(days=int(days))
-    df = usage_df.copy()
-    df["timestamp_dt"] = pd.to_datetime(df["timestamp"])
-    df = df[df["timestamp_dt"] >= cutoff]
-    if user_filter != "All":
-        df = df[df["user"] == user_filter]
-    st.dataframe(df.sort_values("timestamp_dt", ascending=False).reset_index(drop=True))
 
-    st.subheader("Usage over time")
-    if not df.empty:
-        df_count = df.groupby([pd.Grouper(key="timestamp_dt", freq="D"), "action"]).size().reset_index(name="count")
-        chart = alt.Chart(df_count).mark_line(point=True).encode(
-            x="timestamp_dt:T",
-            y="count:Q",
-            color="action:N",
-            tooltip=["timestamp_dt", "action", "count"]
-        ).properties(height=300)
-        st.altair_chart(chart, use_container_width=True)
-    else:
-        st.write("No usage events for the selected filters.")
+    st.write("Select a drawer:")
+    # Display the 7 drawer buttons (vertically). Clicking a button stores last selection in session_state.
+    for i in range(1, 8):
+        if st.button(f"Drawer {i}", key=f"drawer_{i}"):
+            st.session_state["last_drawer_selected"] = i
+            st.success(f"Drawer {i} clicked")
+
+    # Optionally show last clicked drawer
+    if "last_drawer_selected" in st.session_state:
+        st.info(f"Last selected: Drawer {st.session_state['last_drawer_selected']}")
 
 def show_inventory_data():
     st.subheader("Inventory Data")
