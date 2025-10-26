@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from datetime import datetime, timedelta
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="TRACKER", layout="wide")
 
@@ -33,29 +34,20 @@ if "inventory_df" not in st.session_state:
     st.session_state.usage_df = usage
     st.session_state.users = users
     st.session_state.selected = "Status"
-    # status panel controls
-    st.session_state.master_control = True  # Master control ON/OFF
-    st.session_state.current_location = "Lehman Building of engineering"
-    st.session_state.current_room = "LB 172 - Robotics Research Lab"
 
-# Small styling to make the bar compact and status indicator
+# Styling for the header/tab bar and the status rows
 st.markdown(
     """
     <style>
     .small-bar {margin-top: -10px;}
     .tab-button {width:100%; padding:6px 8px; border-radius:6px;}
     .tab-active {background-color:#0f62fe;color:white;}
-    .status-pill {
-        display:inline-block;
-        padding:6px 12px;
-        border-radius:12px;
-        color:white;
-        font-weight:600;
-    }
-    .status-online { background-color: #16a34a; } /* green */
-    .status-offline { background-color: #ef4444; } /* red */
-    .panel-label {font-weight:600; color:#333; margin-bottom:4px;}
-    .panel-row {margin-bottom:12px;}
+    .status-row {display:flex; align-items:center; justify-content:flex-start; gap:12px; padding:8px 0;}
+    .status-label {min-width:220px; color:#333; font-weight:700;}
+    .status-value {font-weight:600; color:#0b6e3a;}
+    .status-pill {display:inline-block; padding:6px 12px; border-radius:12px; color:white; font-weight:600; background:#16a34a;}
+    .panel {padding:8px 4px;}
+    .clock {font-family:monospace; font-weight:600; color:#0b3b6e;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -71,66 +63,64 @@ for i, opt in enumerate(options):
         if st.button(opt, key=f"btn_{opt}"):
             st.session_state.selected = opt
 
-# carousel-like pane (single place where content swaps)
 pane = st.container()
 
 def show_status():
-    # This function renders the vertical status panel requested by the user.
+    """
+    Render a simple vertical list where each line is:
+    Label : Value
+    - Currently Online : ONLINE (static)
+    - Master Control : ON (static)
+    - Current Time : browser time (updates client-side)
+    - Current Location : Lehman Building of engineering (static)
+    - Current Room : LB 172 - Robotics Research Lab (static)
+    """
     st.subheader("Status Panel")
 
-    # Container for vertical list
-    container = st.container()
+    # Build a small HTML block for client-side (browser) clock and static rows.
+    html = """
+    <div class="panel">
+      <div class="status-row">
+        <div class="status-label">1. Currently Online</div>
+        <div class="status-value"><span class="status-pill">ONLINE</span></div>
+      </div>
 
-    # 1. Currently Online — always show ONLINE (static, no toggles)
-    with container:
-        st.markdown('<div class="panel-row">', unsafe_allow_html=True)
-        st.markdown('<div class="panel-label">1. Currently Online</div>', unsafe_allow_html=True)
-        # Static ONLINE pill (always online)
-        st.markdown(f'<div class="status-pill status-online">ONLINE</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+      <div class="status-row">
+        <div class="status-label">2. Master Control</div>
+        <div class="status-value">ON</div>
+      </div>
 
-    # 2. Master Control: ON/OFF switch (checkbox)
-    with container:
-        st.markdown('<div class="panel-row">', unsafe_allow_html=True)
-        st.markdown('<div class="panel-label">2. Master Control</div>', unsafe_allow_html=True)
-        master = st.checkbox("Master Control (ON / OFF)", value=st.session_state.master_control, key="master_control_checkbox")
-        st.session_state.master_control = master
-        mc_text = "ON" if st.session_state.master_control else "OFF"
-        mc_class = "status-online" if st.session_state.master_control else "status-offline"
-        st.markdown(f'<div style="margin-top:6px;"><span class="status-pill {mc_class}">{mc_text}</span></div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+      <div class="status-row">
+        <div class="status-label">3. Current Time (browser)</div>
+        <div class="status-value"><span id="client-clock" class="clock">--</span></div>
+      </div>
 
-    # 3. Current Time
-    with container:
-        st.markdown('<div class="panel-row">', unsafe_allow_html=True)
-        st.markdown('<div class="panel-label">3. Current Time</div>', unsafe_allow_html=True)
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        st.write(now_str)
-        if st.button("Refresh Time", key="refresh_time"):
-            st.experimental_rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+      <div class="status-row">
+        <div class="status-label">4. Current Location</div>
+        <div class="status-value">Lehman Building of engineering</div>
+      </div>
 
-    # 4. Current Location
-    with container:
-        st.markdown('<div class="panel-row">', unsafe_allow_html=True)
-        st.markdown('<div class="panel-label">4. Current Location</div>', unsafe_allow_html=True)
-        loc = st.text_input("Location", value=st.session_state.current_location, key="location_input")
-        st.session_state.current_location = loc
-        st.markdown('</div>', unsafe_allow_html=True)
+      <div class="status-row">
+        <div class="status-label">5. Current Room</div>
+        <div class="status-value">LB 172 - Robotics Research Lab</div>
+      </div>
+    </div>
 
-    # 5. Current Room
-    with container:
-        st.markdown('<div class="panel-row">', unsafe_allow_html=True)
-        st.markdown('<div class="panel-label">5. Current Room</div>', unsafe_allow_html=True)
-        room = st.text_input("Room", value=st.session_state.current_room, key="room_input")
-        st.session_state.current_room = room
-        st.markdown('</div>', unsafe_allow_html=True)
+    <script>
+      function pad(n){ return n.toString().padStart(2,'0'); }
+      function updateClock(){
+        const now = new Date();
+        const s = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate())
+                  + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+        document.getElementById('client-clock').textContent = s;
+      }
+      updateClock();
+      setInterval(updateClock, 1000);
+    </script>
+    """
 
-    st.markdown("---")
-    st.write("Notes:")
-    st.write("- 'Currently Online' always displays ONLINE as requested.")
-    st.write("- 'Master Control' checkbox acts as a global ON/OFF switch and is stored in session_state for this session.")
-    st.write("- Edit Location and Room inline; values are kept in session_state for the session.")
+    # Render the HTML. Height chosen to accommodate the rows.
+    components.html(html, height=220)
 
 def show_usage_history():
     usage_df = st.session_state.usage_df
@@ -202,12 +192,10 @@ def show_missing_items():
         cols = st.columns([3,1])
         cols[0].write(f"ID {item['id']} — {item['name']} ({item['category']}) — Location: {item['location']} — Qty: {item['quantity']}")
         if cols[1].button("Mark Found", key=f"found_{item['id']}"):
-            # mark as available
             idx = st.session_state.inventory_df.index[st.session_state.inventory_df["id"] == item["id"]].tolist()
             if idx:
                 st.session_state.inventory_df.at[idx[0], "status"] = "available"
                 st.session_state.inventory_df.at[idx[0], "last_updated"] = datetime.now().isoformat()
-                # add usage event
                 new_event = {"event_id": int(st.session_state.usage_df["event_id"].max() + 1) if not st.session_state.usage_df.empty else 1,
                              "item_id": item["id"], "item_name": item["name"], "user": "system", "action": "marked_found", "timestamp": datetime.now().isoformat()}
                 st.session_state.usage_df = pd.concat([st.session_state.usage_df, pd.DataFrame([new_event])], ignore_index=True)
@@ -244,10 +232,6 @@ def show_admin_panel():
         st.session_state.inventory_df = inv
         st.session_state.usage_df = usage
         st.session_state.users = users
-        # reset status panel controls
-        st.session_state.master_control = True
-        st.session_state.current_location = "Lehman Building of engineering"
-        st.session_state.current_room = "LB 172 - Robotics Research Lab"
         st.success("Demo data reset.")
         st.experimental_rerun()
 
