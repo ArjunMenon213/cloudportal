@@ -421,7 +421,7 @@ def show_missing_items():
 def show_admin_panel():
     """
     Admin panel redesigned per request:
-      - Large green highlighted passcode "3721"
+      - Large green highlighted passcode "Current Access PASSCODE, all utilities: 3721"
       - Horizontal separator
       - "current customers with access" sheet loaded using the same fetch logic
       - After the sheet, an "Edit Customer access Credentials" button that links to the Google Sheet URL
