@@ -63,7 +63,7 @@ def build_export_urls(doc_id: str, gid: str):
     urls.append(f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&gid={gid}")
     return urls
 
-def embed_local_image_html(path: str, width: int = 400, height: int = 306):
+def embed_local_image_html(path: str, width: int = 250, height: int = 192):
     """
     Read local image file and return HTML <img> with data URI and fixed dimensions.
     """
@@ -76,7 +76,7 @@ def embed_local_image_html(path: str, width: int = 400, height: int = 306):
         ext = os.path.splitext(path)[1].lower().lstrip(".")
         mime = f"image/{'jpeg' if ext in ['jpg','jpeg'] else ext}"
         html = f"""
-        <div style="text-align:center; margin-bottom:8px;">
+        <div style="text-align:center; margin:0;">
           <img src="data:{mime};base64,{b64}" width="{width}" height="{height}" style="object-fit:cover; border-radius:6px; display:block; margin-left:auto; margin-right:auto;" />
         </div>
         """
@@ -84,9 +84,11 @@ def embed_local_image_html(path: str, width: int = 400, height: int = 306):
     except Exception:
         return None
 
-def fetch_sheet_csv(sheet_url: str):
+@st.cache_data(show_spinner=False)
+def fetch_sheet_csv_cached(sheet_url: str):
     """
     Try multiple export endpoints and return (df, used_url, resp_status, resp_text_snippet)
+    Cached to avoid re-fetching during the session.
     """
     doc_id = extract_doc_id(sheet_url)
     if not doc_id:
@@ -133,7 +135,6 @@ st.markdown(
     <style>
     .tab-button { padding:6px 8px; border-radius:6px; }
     .status-pill { display:inline-block; padding:6px 12px; border-radius:14px; color:#ffffff; font-weight:700; background:#16a34a; }
-    .drawer-image { margin-bottom:8px; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -245,7 +246,7 @@ def show_usage_history():
         return
 
     st.write("Loading sheet as CSV... (attempting multiple export endpoints)")
-    df, used_url, status, snippet = fetch_sheet_csv(sheet_url)
+    df, used_url, status, snippet = fetch_sheet_csv_cached(sheet_url)
 
     if df is None:
         st.error("Failed to load CSV.")
@@ -270,73 +271,76 @@ def show_usage_history():
 
 def show_missing_items():
     """
-    Layout:
-    - Right column: stack of the 7 local images (one below another) with fixed size 250x192
-    - Left column: for each drawer (1..7) fetch its sheet CSV and display only rows where column 2 contains 'removed' (case-insensitive)
+    For each drawer show a single row with two columns:
+      - Left column: the sheet rows that contain 'removed' in column 2, sorted by first column ascending
+      - Right column: the drawer image (fixed 250x192)
+    This ensures the image is vertically aligned next to its corresponding filtered table.
     """
     st.subheader("Missing Items")
 
-    left_col, right_col = st.columns([3, 1], gap="small")
+    any_found_global = False
 
-    # Prepare the right column images first (stacked)
-    with right_col:
-        st.write("Drawers (images)")
-        for i in range(1, 8):
+    for i in range(1, 8):
+        st.markdown(f"### Drawer {i}")
+        left_col, right_col = st.columns([3, 1], gap="small")
+
+        # LEFT: table filtered for 'removed' in second column
+        with left_col:
+            sheet_url = DRAWER_URLS.get(i)
+            if not sheet_url:
+                st.warning(f"No sheet URL configured for Drawer {i}.")
+            else:
+                df, used_url, status, snippet = fetch_sheet_csv_cached(sheet_url)
+                if df is None:
+                    st.error(f"Could not load sheet for Drawer {i}.")
+                    if status:
+                        st.write(f"HTTP status: {status}")
+                    if used_url:
+                        st.write(f"Tried URL: {used_url}")
+                    if snippet:
+                        st.code(snippet)
+                else:
+                    # Ensure at least two columns exist
+                    if df.shape[1] < 2:
+                        st.info("Sheet doesn't have a second column to inspect for 'Removed'.")
+                    else:
+                        first_col = df.columns[0]
+                        second_col = df.columns[1]
+
+                        # Convert first col to numeric for proper sorting
+                        df[first_col] = pd.to_numeric(df[first_col], errors='coerce')
+
+                        # Filter rows where second column contains 'removed' (case-insensitive, word-boundary)
+                        mask = df[second_col].astype(str).str.contains(r"\bremoved\b", case=False, na=False)
+                        df_removed = df[mask].copy()
+
+                        if df_removed.empty:
+                            st.write("No 'Removed' entries found in column 2.")
+                        else:
+                            any_found_global = True
+                            # Sort by first column ascending
+                            df_removed_sorted = df_removed.sort_values(by=first_col, ascending=True, na_position='last').reset_index(drop=True)
+                            st.dataframe(df_removed_sorted)
+
+        # RIGHT: fixed-size image for this drawer
+        with right_col:
             img_path = DRAWER_IMAGES.get(i)
             if img_path and os.path.exists(img_path):
-                html = embed_local_image_html(img_path, width=250, height=192)
-                if html:
-                    # embed each image block; height a bit larger than image to allow spacing
-                    components.html(html, height=210)
+                img_html = embed_local_image_html(img_path, width=250, height=192)
+                if img_html:
+                    # show image; height slightly larger than image to avoid clipping
+                    components.html(img_html, height=210)
                 else:
                     st.image(img_path, width=250)
             else:
                 placeholder = f"https://via.placeholder.com/250x192.png?text=Drawer+{i}"
-                components.html(f'<div style="text-align:center; margin-bottom:8px;"><img src="{placeholder}" width="250" height="192" style="object-fit:cover; border-radius:6px;" /></div>', height=210)
+                components.html(f'<div style="text-align:center; margin:0;"><img src="{placeholder}" width="250" height="192" style="object-fit:cover; border-radius:6px;" /></div>', height=210)
 
-    # Left column: for each drawer, fetch sheet and filter column 2 for 'removed'
-    with left_col:
-        st.write("Removed items (from column 2 of each drawer's sheet)")
-        any_found = False
-        for i in range(1, 8):
-            st.markdown(f"### Drawer {i}")
-            sheet_url = DRAWER_URLS.get(i)
-            if not sheet_url:
-                st.warning(f"No sheet URL configured for Drawer {i}.")
-                continue
+        # small separator between drawers
+        st.markdown("---")
 
-            df, used_url, status, snippet = fetch_sheet_csv(sheet_url)
-            if df is None:
-                st.error(f"Could not load sheet for Drawer {i}.")
-                if status:
-                    st.write(f"HTTP status: {status}")
-                if used_url:
-                    st.write(f"Tried URL: {used_url}")
-                if snippet:
-                    st.write("Snippet:")
-                    st.code(snippet)
-                continue
-
-            # Ensure there is a second column
-            if df.shape[1] < 2:
-                st.info("Sheet doesn't have a second column to inspect for 'Removed'.")
-                continue
-
-            second_col = df.columns[1]
-            # Filter rows where second column contains 'removed' (case-insensitive)
-            mask = df[second_col].astype(str).str.contains(r"\bremoved\b", case=False, na=False)
-            df_removed = df[mask].copy()
-
-            if df_removed.empty:
-                st.write("No 'Removed' entries found in column 2.")
-            else:
-                any_found = True
-                # Show the filtered rows; reset index for neat display
-                df_removed_display = df_removed.reset_index(drop=True)
-                st.dataframe(df_removed_display)
-
-        if not any_found:
-            st.info("No 'Removed' entries found across all drawer sheets.")
+    if not any_found_global:
+        st.info("No 'Removed' entries found across all drawer sheets.")
 
 def show_inventory_data():
     st.subheader("Inventory Data")
@@ -362,6 +366,41 @@ def show_inventory_data():
     st.download_button("Download inventory CSV", data=st.session_state.inventory_df.to_csv(index=False), file_name="inventory_export.csv", mime="text/csv")
     st.subheader("Inventory Table")
     st.dataframe(st.session_state.inventory_df.sort_values(["category", "name"]).reset_index(drop=True))
+
+def show_admin_panel():
+    st.subheader("Admin Panel")
+    st.write("Manage users and global settings. This is a simplified admin view for the demo.")
+    st.write("Registered users")
+    st.dataframe(pd.DataFrame({"user": st.session_state.users}))
+
+    with st.form("add_user"):
+        new_user = st.text_input("Add user (username)")
+        add_submitted = st.form_submit_button("Add user")
+        if add_submitted and new_user:
+            if new_user in st.session_state.users:
+                st.warning("User already exists.")
+            else:
+                st.session_state.users.append(new_user)
+                st.success(f"User '{new_user}' added.")
+
+    with st.form("remove_user"):
+        remove_user = st.selectbox("Remove user", options=[""] + st.session_state.users)
+        remove_submitted = st.form_submit_button("Remove user")
+        if remove_submitted and remove_user:
+            st.session_state.users = [u for u in st.session_state.users if u != remove_user]
+            st.success(f"User '{remove_user}' removed.")
+
+    st.markdown("---")
+    st.write("Danger zone")
+    if st.button("Reset demo data (in-session only)"):
+        inv, usage, users = init_data()
+        st.session_state.inventory_df = inv
+        st.session_state.usage_df = usage
+        st.session_state.users = users
+        st.session_state.master_control = True
+        st.session_state.selected_drawer = None
+        st.success("Demo data reset.")
+        st.experimental_rerun()
 
 # Render selected pane
 with pane:
