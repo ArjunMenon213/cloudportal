@@ -1,3 +1,7 @@
 streamlit>=1.20
 pandas
 altair
+gspread
+google-auth
+gspread-dataframe
+requests     # optional, sometimes useful
