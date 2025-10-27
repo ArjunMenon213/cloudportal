@@ -306,21 +306,41 @@ def show_missing_items():
     if missing_df.empty:
         st.success("No missing items! Great job.")
         return
-    st.dataframe(missing_df.reset_index(drop=True))
-    st.write("Actions")
-    rows = missing_df.to_dict("records")
-    for item in rows:
-        cols = st.columns([3,1])
-        cols[0].write(f"ID {item['id']} — {item['name']} ({item['category']}) — Location: {item['location']} — Qty: {item['quantity']}")
-        if cols[1].button("Mark Found", key=f"found_{item['id']}"):
-            idx = st.session_state.inventory_df.index[st.session_state.inventory_df["id"] == item["id"]].tolist()
-            if idx:
-                st.session_state.inventory_df.at[idx[0], "status"] = "available"
-                st.session_state.inventory_df.at[idx[0], "last_updated"] = datetime.now().isoformat()
-                new_event = {"event_id": int(st.session_state.usage_df["event_id"].max() + 1) if not st.session_state.usage_df.empty else 1,
-                             "item_id": item["id"], "item_name": item["name"], "user": "system", "action": "marked_found", "timestamp": datetime.now().isoformat()}
-                st.session_state.usage_df = pd.concat([st.session_state.usage_df, pd.DataFrame([new_event])], ignore_index=True)
-                st.experimental_rerun()
+
+    # Layout: left column for list/actions, right column for vertically stacked drawer images (Drawer 1..7)
+    left_col, right_col = st.columns([3, 1])
+    with left_col:
+        st.dataframe(missing_df.reset_index(drop=True))
+        st.write("Actions")
+        rows = missing_df.to_dict("records")
+        for item in rows:
+            cols = st.columns([3,1])
+            cols[0].write(f"ID {item['id']} — {item['name']} ({item['category']}) — Location: {item['location']} — Qty: {item['quantity']}")
+            if cols[1].button("Mark Found", key=f"found_{item['id']}"):
+                idx = st.session_state.inventory_df.index[st.session_state.inventory_df["id"] == item["id"]].tolist()
+                if idx:
+                    st.session_state.inventory_df.at[idx[0], "status"] = "available"
+                    st.session_state.inventory_df.at[idx[0], "last_updated"] = datetime.now().isoformat()
+                    new_event = {"event_id": int(st.session_state.usage_df["event_id"].max() + 1) if not st.session_state.usage_df.empty else 1,
+                                 "item_id": item["id"], "item_name": item["name"], "user": "system", "action": "marked_found", "timestamp": datetime.now().isoformat()}
+                    st.session_state.usage_df = pd.concat([st.session_state.usage_df, pd.DataFrame([new_event])], ignore_index=True)
+                    st.experimental_rerun()
+
+    # Right column: show all drawer images aligned vertically from Drawer 1 down to Drawer 7
+    with right_col:
+        for i in range(1, 8):
+            img_path = DRAWER_IMAGES.get(i)
+            # Use requested size: width=250, height=191
+            if img_path and os.path.exists(img_path):
+                img_html = embed_local_image_html(img_path, width=250, height=191)
+                if img_html:
+                    # small height allowance for the component to display the image comfortably
+                    components.html(img_html, height=200)
+                else:
+                    st.image(img_path, width=250)
+            else:
+                placeholder = f"https://via.placeholder.com/250x191.png?text=Drawer+{i}"
+                components.html(f'<div style="text-align:center;"><img src="{placeholder}" width="250" height="191" style="object-fit:cover; border-radius:6px;" /></div>', height=200)
 
 def show_admin_panel():
     st.subheader("Admin Panel")
