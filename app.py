@@ -1,3 +1,4 @@
+# Updated Streamlit app: fixes deprecated image parameter and improves Google Sheet CSV fetching/diagnostics.
 import os
 import re
 from io import StringIO
@@ -40,28 +41,35 @@ DRAWER_URLS = {
     7: "https://docs.google.com/spreadsheets/d/1Dc0myxSLB_dTSR-eFE4BZ8ZjqnSpDBkA/edit?usp=sharing&ouid=115545081311750015459&rtpof=true&sd=true",
 }
 
-# Use local repository images named tools-drawer1.jpg ... tools-drawer7.jpg
-DRAWER_IMAGES = {
-    1: "tools-drawer1.jpg",
-    2: "tools-drawer2.jpg",
-    3: "tools-drawer3.jpg",
-    4: "tools-drawer4.jpg",
-    5: "tools-drawer5.jpg",
-    6: "tools-drawer6.jpg",
-    7: "tools-drawer7.jpg",
-}
+# Local images in repo
+DRAWER_IMAGES = {i: f"tools-drawer{i}.jpg" for i in range(1, 8)}
 
 def extract_doc_id(sheet_url: str) -> str:
-    """Extract Google Sheets doc id from a given sheet URL."""
     m = re.search(r"/d/([a-zA-Z0-9-_]+)", sheet_url)
     return m.group(1) if m else ""
 
-def build_csv_export_url(sheet_url: str, gid: str = "0") -> str:
-    """Return the CSV export URL for a Google Sheet doc id and gid (sheet tab)."""
-    doc_id = extract_doc_id(sheet_url)
-    if not doc_id:
-        return ""
-    return f"https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv&gid={gid}"
+def extract_gid(sheet_url: str) -> str:
+    # try fragment '#gid=...'
+    m = re.search(r"[#&]gid=([0-9]+)", sheet_url)
+    if m:
+        return m.group(1)
+    # sometimes gid is supplied as a query param
+    m = re.search(r"[?&]gid=([0-9]+)", sheet_url)
+    if m:
+        return m.group(1)
+    return "0"
+
+def build_export_urls(doc_id: str, gid: str):
+    """
+    Return a list of candidate CSV export URLs to try.
+    We try:
+      1) /export?format=csv&gid={gid}
+      2) /gviz/tq?tqx=out:csv&gid={gid}
+    """
+    urls = []
+    urls.append(f"https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv&gid={gid}")
+    urls.append(f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&gid={gid}")
+    return urls
 
 # Initialize demo data and state
 if "inventory_df" not in st.session_state:
@@ -152,13 +160,43 @@ def show_status():
     with c2:
         st.write("LB 172 - Robotics Research Lab")
 
+def fetch_sheet_csv(sheet_url: str):
+    """
+    Try multiple export endpoints and return (df, used_url, resp_status, resp_text_snippet)
+    If all attempts fail, return (None, last_url_tried, status, snippet)
+    """
+    doc_id = extract_doc_id(sheet_url)
+    if not doc_id:
+        return None, None, None, "Could not extract document id from URL."
+
+    gid = extract_gid(sheet_url)
+    candidate_urls = build_export_urls(doc_id, gid)
+
+    last_status = None
+    last_snippet = ""
+    for url in candidate_urls:
+        try:
+            resp = requests.get(url, timeout=20)
+        except Exception as e:
+            last_status = None
+            last_snippet = str(e)
+            continue
+
+        last_status = resp.status_code
+        # if successful, parse CSV
+        if resp.status_code == 200:
+            try:
+                df = pd.read_csv(StringIO(resp.text))
+                return df, url, resp.status_code, resp.text[:800]
+            except Exception as e:
+                return None, url, resp.status_code, f"Fetched content but failed to parse CSV: {e}\nSnippet: {resp.text[:800]}"
+        else:
+            # store snippet to help debug permission/server errors
+            last_snippet = resp.text[:800]
+
+    return None, candidate_urls[-1] if candidate_urls else None, last_status, last_snippet
+
 def show_usage_history():
-    """
-    Horizontal Drawer buttons (1..7). When a drawer is selected:
-    - show the local repository image for that drawer (tools-drawerN.jpg) above the sheet
-    - fetch the sheet as CSV and display it below the image
-    - sort the first column (assumed numeric) ascending
-    """
     st.subheader("Usage History")
     st.write("Select a drawer to view its image and sheet:")
 
@@ -177,59 +215,42 @@ def show_usage_history():
 
     st.write(f"Displaying: Drawer {selected}")
 
-    # Show local repository image first (fallback to placeholder if not found)
+    # Show local repository image first (use_container_width instead of deprecated use_column_width)
     local_img = DRAWER_IMAGES.get(selected)
     if local_img and os.path.exists(local_img):
-        st.image(local_img, use_column_width=True)
+        st.image(local_img, use_container_width=True)
     else:
-        # Fallback placeholder image if the local image file is missing
-        st.image("https://via.placeholder.com/1000x220.png?text=Drawer+%s+Image+not+found" % selected, use_column_width=True)
+        st.image(f"https://via.placeholder.com/1000x220.png?text=Drawer+{selected}+Image+not+found", use_container_width=True)
 
-    # Then fetch CSV for the sheet and display it
+    # Fetch and show CSV
     sheet_url = DRAWER_URLS.get(selected)
     if not sheet_url:
         st.error("No sheet URL configured for this drawer.")
         return
 
-    # Default gid; change per-drawer if needed
-    gid_for_drawer = "0"
-    csv_url = build_csv_export_url(sheet_url, gid=gid_for_drawer)
-    if not csv_url:
-        st.error("Could not build CSV export URL from the provided sheet URL.")
+    st.write("Loading sheet as CSV... (attempting multiple export endpoints)")
+    df, used_url, status, snippet = fetch_sheet_csv(sheet_url)
+
+    if df is None:
+        st.error("Failed to load CSV.")
+        if status:
+            st.write(f"Last HTTP status: {status}")
+        if used_url:
+            st.write(f"Last tried URL: {used_url}")
+        if snippet:
+            st.write("Response / error snippet (truncated):")
+            st.code(snippet)
+        st.info("Common fixes: set the sheet's Share → 'Anyone with the link' → Viewer, or Publish → 'Publish to web' for that sheet/tab. If sheets are private, use a service account (gspread).")
         return
 
-    st.write("Loading sheet as CSV...")
-    try:
-        resp = requests.get(csv_url, timeout=20)
-    except Exception as e:
-        st.error("Error fetching the sheet CSV: " + str(e))
-        return
-
-    if resp.status_code != 200:
-        st.error(f"Failed to fetch CSV (HTTP {resp.status_code}). Ensure the sheet is shared as 'Anyone with the link' or published to the web.")
-        return
-
-    # Load CSV into pandas
-    try:
-        df = pd.read_csv(StringIO(resp.text))
-    except Exception as e:
-        st.error("Error parsing CSV into a dataframe: " + str(e))
-        return
-
-    if df.empty:
-        st.warning("Sheet loaded but it is empty.")
-        return
-
-    # Sort by first column (convert to numeric if possible), ascending
+    # Sort by first column ascending (convert to numeric if possible)
     first_col = df.columns[0]
     df[first_col] = pd.to_numeric(df[first_col], errors='coerce')
     df_sorted = df.sort_values(by=first_col, ascending=True, na_position='last').reset_index(drop=True)
 
-    st.success(f"Loaded sheet: {len(df_sorted)} rows, {len(df_sorted.columns)} columns. Sorted by first column '{first_col}' ascending.")
+    st.success(f"Loaded sheet from: {used_url}  (rows: {len(df_sorted)}, cols: {len(df_sorted.columns)})")
     st.dataframe(df_sorted)
-
-    # Provide download of the CSV that was fetched
-    st.download_button("Download sheet CSV", data=resp.content, file_name=f"drawer_{selected}.csv", mime="text/csv")
+    st.download_button("Download sheet CSV", data=df_sorted.to_csv(index=False).encode("utf-8"), file_name=f"drawer_{selected}.csv", mime="text/csv")
 
 def show_inventory_data():
     st.subheader("Inventory Data")
