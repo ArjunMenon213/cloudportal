@@ -1,9 +1,12 @@
-import streamlit as st
-import pandas as pd
-import altair as alt
-from datetime import datetime, timedelta
-import streamlit.components.v1 as components
+import os
 import re
+from io import StringIO
+from datetime import datetime, timedelta
+
+import pandas as pd
+import requests
+import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="TRACKER", layout="wide")
 
@@ -26,7 +29,7 @@ def init_data():
     users = ["alice", "bob", "charlie", "admin"]
     return inventory, usage, users
 
-# Google Sheets links for drawers (as provided)
+# Drawer Google Sheet URLs (as provided)
 DRAWER_URLS = {
     1: "https://docs.google.com/spreadsheets/d/1tbGORyBH36yx2R_iR1IYcHu4MwbSKrfE/edit?usp=drive_link&ouid=115545081311750015459&rtpof=true&sd=true",
     2: "https://docs.google.com/spreadsheets/d/1JOYSm855CuvnA6d-QXZC82Vpe0BrlrWi/edit?usp=sharing&ouid=115545081311750015459&rtpof=true&sd=true",
@@ -37,18 +40,28 @@ DRAWER_URLS = {
     7: "https://docs.google.com/spreadsheets/d/1Dc0myxSLB_dTSR-eFE4BZ8ZjqnSpDBkA/edit?usp=sharing&ouid=115545081311750015459&rtpof=true&sd=true",
 }
 
-def extract_sheet_embed_url(sheet_url: str) -> str:
-    """
-    Try to build an embeddable URL for a Google Sheet.
-    Best-effort: extract the doc id and use the /preview path which usually works for public/shareable sheets.
-    """
-    # extract id from /d/<id>/
+# Use local repository images named tools-drawer1.jpg ... tools-drawer7.jpg
+DRAWER_IMAGES = {
+    1: "tools-drawer1.jpg",
+    2: "tools-drawer2.jpg",
+    3: "tools-drawer3.jpg",
+    4: "tools-drawer4.jpg",
+    5: "tools-drawer5.jpg",
+    6: "tools-drawer6.jpg",
+    7: "tools-drawer7.jpg",
+}
+
+def extract_doc_id(sheet_url: str) -> str:
+    """Extract Google Sheets doc id from a given sheet URL."""
     m = re.search(r"/d/([a-zA-Z0-9-_]+)", sheet_url)
-    if not m:
-        return sheet_url  # fallback to original
-    _id = m.group(1)
-    # Use preview path which is commonly embeddable:
-    return f"https://docs.google.com/spreadsheets/d/{_id}/preview"
+    return m.group(1) if m else ""
+
+def build_csv_export_url(sheet_url: str, gid: str = "0") -> str:
+    """Return the CSV export URL for a Google Sheet doc id and gid (sheet tab)."""
+    doc_id = extract_doc_id(sheet_url)
+    if not doc_id:
+        return ""
+    return f"https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv&gid={gid}"
 
 # Initialize demo data and state
 if "inventory_df" not in st.session_state:
@@ -58,16 +71,14 @@ if "inventory_df" not in st.session_state:
     st.session_state.users = users
     st.session_state.selected = "Status"
     st.session_state.master_control = True
-    # default no drawer selected
     st.session_state.selected_drawer = None
 
-# Minimal styling: keep Streamlit defaults for typography; only style ONLINE pill slightly.
+# Minimal styling
 st.markdown(
     """
     <style>
     .tab-button { padding:6px 8px; border-radius:6px; }
     .status-pill { display:inline-block; padding:6px 12px; border-radius:14px; color:#ffffff; font-weight:700; background:#16a34a; }
-    .drawer-btn { width:100%; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -143,44 +154,82 @@ def show_status():
 
 def show_usage_history():
     """
-    Render 7 horizontal drawer buttons (Drawer 1 .. Drawer 7).
-    When a drawer button is pressed, set session_state.selected_drawer to that number.
-    Below the buttons, embed the corresponding Google Sheet (using a best-effort preview/embed URL).
+    Horizontal Drawer buttons (1..7). When a drawer is selected:
+    - show the local repository image for that drawer (tools-drawerN.jpg) above the sheet
+    - fetch the sheet as CSV and display it below the image
+    - sort the first column (assumed numeric) ascending
     """
     st.subheader("Usage History")
-
-    st.write("Select a drawer to view its sheet:")
+    st.write("Select a drawer to view its image and sheet:")
 
     # Horizontal row of 7 buttons
-    cols = st.columns(7, gap="small")
+    btn_cols = st.columns(7, gap="small")
     for i in range(1, 8):
-        with cols[i-1]:
+        with btn_cols[i-1]:
             if st.button(f"Drawer {i}", key=f"drawer_btn_{i}"):
                 st.session_state.selected_drawer = i
 
-    # Panel: embed selected sheet (or show informational message)
     st.markdown("---")
-    if st.session_state.selected_drawer is None:
-        st.info("No drawer selected. Click a drawer button above to load its sheet.")
+    selected = st.session_state.selected_drawer
+    if selected is None:
+        st.info("No drawer selected. Click a Drawer button above.")
         return
 
-    selected = st.session_state.selected_drawer
     st.write(f"Displaying: Drawer {selected}")
 
+    # Show local repository image first (fallback to placeholder if not found)
+    local_img = DRAWER_IMAGES.get(selected)
+    if local_img and os.path.exists(local_img):
+        st.image(local_img, use_column_width=True)
+    else:
+        # Fallback placeholder image if the local image file is missing
+        st.image("https://via.placeholder.com/1000x220.png?text=Drawer+%s+Image+not+found" % selected, use_column_width=True)
+
+    # Then fetch CSV for the sheet and display it
     sheet_url = DRAWER_URLS.get(selected)
     if not sheet_url:
-        st.error("URL for selected drawer not found.")
+        st.error("No sheet URL configured for this drawer.")
         return
 
-    embed_url = extract_sheet_embed_url(sheet_url)
+    # Default gid; change per-drawer if needed
+    gid_for_drawer = "0"
+    csv_url = build_csv_export_url(sheet_url, gid=gid_for_drawer)
+    if not csv_url:
+        st.error("Could not build CSV export URL from the provided sheet URL.")
+        return
 
-    # Embed the Google Sheet in an iframe. Height can be adjusted as needed.
-    iframe_html = f"""
-    <div style="width:100%;">
-      <iframe src="{embed_url}" style="width:100%; height:720px; border:0;" allowfullscreen></iframe>
-    </div>
-    """
-    components.html(iframe_html, height=740)
+    st.write("Loading sheet as CSV...")
+    try:
+        resp = requests.get(csv_url, timeout=20)
+    except Exception as e:
+        st.error("Error fetching the sheet CSV: " + str(e))
+        return
+
+    if resp.status_code != 200:
+        st.error(f"Failed to fetch CSV (HTTP {resp.status_code}). Ensure the sheet is shared as 'Anyone with the link' or published to the web.")
+        return
+
+    # Load CSV into pandas
+    try:
+        df = pd.read_csv(StringIO(resp.text))
+    except Exception as e:
+        st.error("Error parsing CSV into a dataframe: " + str(e))
+        return
+
+    if df.empty:
+        st.warning("Sheet loaded but it is empty.")
+        return
+
+    # Sort by first column (convert to numeric if possible), ascending
+    first_col = df.columns[0]
+    df[first_col] = pd.to_numeric(df[first_col], errors='coerce')
+    df_sorted = df.sort_values(by=first_col, ascending=True, na_position='last').reset_index(drop=True)
+
+    st.success(f"Loaded sheet: {len(df_sorted)} rows, {len(df_sorted.columns)} columns. Sorted by first column '{first_col}' ascending.")
+    st.dataframe(df_sorted)
+
+    # Provide download of the CSV that was fetched
+    st.download_button("Download sheet CSV", data=resp.content, file_name=f"drawer_{selected}.csv", mime="text/csv")
 
 def show_inventory_data():
     st.subheader("Inventory Data")
