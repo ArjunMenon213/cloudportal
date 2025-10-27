@@ -127,6 +127,7 @@ if "inventory_df" not in st.session_state:
     st.session_state.selected = "Status"
     st.session_state.master_control = True
     st.session_state.selected_drawer = None
+    st.session_state.admin_unlocked = False  # track admin access
 
 # Minimal styling
 st.markdown(
@@ -420,22 +421,44 @@ def show_missing_items():
 
 def show_admin_panel():
     """
-    Admin panel redesigned per request:
-      - Large green highlighted passcode "Current access passcode for all utilities: 3721"
-      - Horizontal separator
-      - "current customers with access" sheet loaded using the same fetch logic
-      - After the sheet, an "Edit Customer access Credentials" button that links to the Google Sheet URL
+    Admin panel now locked behind a passcode.
+    - To view admin content the user must enter passcode "3721".
+    - Successful unlock sets st.session_state.admin_unlocked = True.
+    - When unlocked, the previous admin layout is displayed (passcode box, sheet, edit link).
+    - A 'Lock Admin Panel' button is available to lock it again.
     """
     st.subheader("Admin Panel")
 
-    # Large green highlighted passcode
-    # using the CSS class defined earlier .passcode-box
-    st.markdown('<div class="passcode-box">Current access passcode for all utilities: 3721</div>', unsafe_allow_html=True)
+    # If not unlocked, show passcode entry UI and return
+    if not st.session_state.get("admin_unlocked", False):
+        st.write("Admin access requires passcode.")
+        # Use a password-style input
+        entered = st.text_input("Enter passcode to unlock admin panel", type="password", key="admin_pass_input")
+        if st.button("Unlock Admin Panel"):
+            if entered == "3721":
+                st.session_state.admin_unlocked = True
+                st.success("Admin panel unlocked.")
+                # rerun so the unlocked UI appears immediately
+                st.experimental_rerun()
+            else:
+                st.error("Incorrect passcode.")
+        # Provide a small hint toggle (optional) - do not expose passcode
+        return
+
+    # Admin is unlocked: show content
+    # Large green highlighted passcode box (as requested)
+    st.markdown('<div class="passcode-box">3721</div>', unsafe_allow_html=True)
+
+    # Lock button so admin can lock the panel explicitly
+    if st.button("Lock Admin Panel"):
+        st.session_state.admin_unlocked = False
+        st.success("Admin panel locked.")
+        st.experimental_rerun()
 
     # horizontal separator
     st.markdown("---")
 
-    # Title
+    # Title for the customers sheet
     st.markdown("### current customers with access")
 
     # Load and display the provided Google Sheet using existing fetch logic
@@ -465,7 +488,6 @@ def show_admin_panel():
     st.download_button("Download customers CSV", data=df.to_csv(index=False).encode("utf-8"), file_name="current_customers.csv", mime="text/csv")
 
     # "Edit Customer access Credentials" button linking to the sheet
-    # Use an HTML anchor styled as a button to open the sheet in a new tab
     edit_button_html = f'''
       <div style="margin-top:12px;">
         <a class="edit-link-btn" href="{CUSTOMER_SHEET_URL}" target="_blank" rel="noopener noreferrer">Edit Customer access Credentials</a>
