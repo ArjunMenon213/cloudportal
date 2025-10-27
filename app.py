@@ -302,12 +302,20 @@ def show_inventory_data():
 def show_missing_items():
     """
     For each drawer (1..7) render a single row containing:
-      - left: the filtered 'removed' rows (scan column 2 for 'removed') limited to first 6 columns for display,
-              with a fixed dataframe height so the right image aligns vertically,
+      - left: the "currently removed" items computed by grouping on the first column and
+              checking the last entry (chronological) of each group for the word 'removed'
+              (searching the second column for the action).
       - right: the drawer image sized width=250 height=191.
-    This ensures the image and its corresponding filtered table stay together.
+
+    The logic:
+      - keep sheet-fetching/export logic unchanged (fetch_sheet_csv).
+      - assume CSV rows are chronological in file order (first row = earliest).
+      - group rows by the first column's value, determine each group's last row (by order),
+        and consider the item "missing" if that last row's second-column value contains 'removed'
+        (case-insensitive).
+      - display the last-row entries for items that are currently removed.
     """
-    st.subheader("Missing Items — Removed Listings by Drawer")
+    st.subheader("Missing Items — Currently Removed (based on last history entry)")
 
     # Per-drawer rows: each drawer gets its own two-column row so table and image stay aligned
     row_table_height = 200  # px; dataframe will be shown with this height so images align
@@ -316,7 +324,7 @@ def show_missing_items():
         st.markdown(f"### Drawer {i}")
         left_col, right_col = st.columns([3, 1])
 
-        # LEFT: filtered table or informative placeholder (fixed height)
+        # LEFT: compute "currently removed" entries using last-entry-per-group logic
         with left_col:
             sheet_url = DRAWER_URLS.get(i)
             if not sheet_url:
@@ -333,28 +341,44 @@ def show_missing_items():
                         st.code(snippet)
                     components.html(f'<div style="height:{row_table_height}px;"></div>', height=8)
                 else:
-                    # If sheet has fewer than 2 columns, cannot scan column 2
+                    # Need at least 2 columns: first column is grouping key, second column contains the action text
                     if df.shape[1] < 2:
-                        st.info(f"Drawer {i}: sheet has fewer than 2 columns; nothing to scan for 'removed'.")
+                        st.info(f"Drawer {i}: sheet has fewer than 2 columns; cannot determine last action.")
                         components.html(f'<div style="height:{row_table_height}px;"></div>', height=8)
                     else:
+                        first_col = df.columns[0]
                         second_col = df.columns[1]
-                        try:
-                            mask = df[second_col].astype(str).str.lower().str.contains("removed", na=False)
-                        except Exception:
-                            mask = df[second_col].astype(str).str.lower().str.contains("removed", na=False)
 
-                        filtered = df[mask].reset_index(drop=True)
-                        if filtered.empty:
-                            st.write("No 'removed' listings found in this drawer.")
+                        # Keep original row order (assume file order is chronological). Use groupby to get last row index per group.
+                        try:
+                            # groupby preserves the order of appearance when sort=False
+                            last_indices = df.groupby(df[first_col], sort=False).apply(lambda g: g.index[-1])
+                            # last_indices is a Series with group keys -> index; get the indices as list
+                            last_idx_list = list(last_indices.values)
+                            last_rows = df.loc[last_idx_list].reset_index(drop=True)
+                        except Exception:
+                            # fallback: for safety, compute by iterating groups
+                            grouped = {}
+                            for idx, row in df.iterrows():
+                                key = row[first_col]
+                                grouped[key] = idx
+                            last_idx_list = list(grouped.values())
+                            last_rows = df.loc[last_idx_list].reset_index(drop=True)
+
+                        # Now filter last_rows where second_col contains 'removed' (case-insensitive)
+                        mask = last_rows[second_col].astype(str).str.lower().str.contains("removed", na=False)
+                        currently_removed = last_rows[mask].reset_index(drop=True)
+
+                        if currently_removed.empty:
+                            st.write("No currently removed items found in this drawer (based on the last history entry).")
                             components.html(f'<div style="height:{row_table_height}px;"></div>', height=8)
                         else:
-                            if filtered.shape[1] > 6:
-                                filtered_display = filtered.iloc[:, :6].copy()
+                            # Show only up to 6 columns for visual consistency
+                            if currently_removed.shape[1] > 6:
+                                display_df = currently_removed.iloc[:, :6].copy()
                             else:
-                                filtered_display = filtered.copy()
-                            # show dataframe with fixed height so the adjacent image aligns
-                            st.dataframe(filtered_display, height=row_table_height)
+                                display_df = currently_removed.copy()
+                            st.dataframe(display_df, height=row_table_height)
 
         # RIGHT: image sized 250x191
         with right_col:
