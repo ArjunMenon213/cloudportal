@@ -177,6 +177,11 @@ for i, opt in enumerate(options):
         if st.button(opt, key=f"btn_{opt}"):
             st.session_state.selected = opt
 
+# Auto-lock admin when navigating away from Admin Panel
+# If the currently selected pane is not Admin Panel, ensure admin_unlocked is False.
+if st.session_state.get("selected") != "Admin Panel" and st.session_state.get("admin_unlocked", False):
+    st.session_state.admin_unlocked = False
+
 pane = st.container()
 
 # -------------------------
@@ -399,7 +404,7 @@ def show_missing_items():
 def show_admin_panel():
     """
     Admin panel locked behind passcode "3721".
-    No use of st.experimental_rerun() to avoid runtime errors.
+    Auto-locks when the user navigates away by clicking another top-nav button.
     """
     st.subheader("Admin Panel")
 
@@ -412,20 +417,15 @@ def show_admin_panel():
             if entered == "3721":
                 st.session_state.admin_unlocked = True
                 st.success("Admin panel unlocked.")
-                # rely on Streamlit re-run triggered by the button click itself; return now.
+                # rely on Streamlit rerun triggered by the button click; return so the unlocked view will appear next run
                 return
             else:
                 st.error("Incorrect passcode.")
                 return
         return
 
-    # Unlocked view
+    # Unlocked view: no "Lock Admin Panel" button — admin will be auto-locked when navigating away.
     st.markdown('<div class="passcode-box">3721</div>', unsafe_allow_html=True)
-
-    if st.button("Lock Admin Panel"):
-        st.session_state.admin_unlocked = False
-        st.success("Admin panel locked.")
-        return
 
     st.markdown("---")
     st.markdown("### current customers with access")
