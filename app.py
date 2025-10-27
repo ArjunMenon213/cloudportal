@@ -1,7 +1,7 @@
 import os
 import re
 import base64
-from io import StringIO
+from io import StringIO, BytesIO
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -44,29 +44,12 @@ DRAWER_URLS = {
 # Local images in repo: tools-drawer1.jpg ... tools-drawer7.jpg
 DRAWER_IMAGES = {i: f"tools-drawer{i}.jpg" for i in range(1, 8)}
 
-def extract_doc_id(sheet_url: str) -> str:
-    m = re.search(r"/d/([a-zA-Z0-9-_]+)", sheet_url)
-    return m.group(1) if m else ""
-
-def extract_gid(sheet_url: str) -> str:
-    m = re.search(r"[#&]gid=([0-9]+)", sheet_url)
-    if m:
-        return m.group(1)
-    m = re.search(r"[?&]gid=([0-9]+)", sheet_url)
-    if m:
-        return m.group(1)
-    return "0"
-
-def build_export_urls(doc_id: str, gid: str):
-    urls = []
-    urls.append(f"https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv&gid={gid}")
-    urls.append(f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&gid={gid}")
-    return urls
-
+# -------------------------
+# Utilities: image embed
+# -------------------------
 def embed_local_image_html(path: str, width: int = 400, height: int = 306):
     """
     Read local image file and return HTML <img> with data URI and fixed dimensions.
-    This avoids use_column_width deprecation and forces the desired width/height.
     """
     if not os.path.exists(path):
         return None
@@ -82,10 +65,46 @@ def embed_local_image_html(path: str, width: int = 400, height: int = 306):
         </div>
         """
         return html
-    except Exception as e:
+    except Exception:
         return None
 
-def fetch_sheet_csv(sheet_url: str):
+# -------------------------
+# Robust sheet fetcher
+# -------------------------
+def extract_doc_id(sheet_url: str) -> str:
+    m = re.search(r"/d/([a-zA-Z0-9-_]+)", sheet_url)
+    return m.group(1) if m else ""
+
+def extract_gid(sheet_url: str) -> str:
+    # try fragment '#gid=...' or query '?gid=...'
+    m = re.search(r"[#&]gid=([0-9]+)", sheet_url)
+    if m:
+        return m.group(1)
+    m = re.search(r"[?&]gid=([0-9]+)", sheet_url)
+    if m:
+        return m.group(1)
+    return "0"
+
+def build_export_urls(doc_id: str, gid: str):
+    """
+    Candidate URLs (in order) to try for getting sheet contents:
+      - /export?format=csv
+      - /gviz/tq?tqx=out:csv
+      - /export?format=xlsx  (fallback to Excel and read via pandas if CSV fails)
+    """
+    urls = []
+    urls.append(f"https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv&gid={gid}")
+    urls.append(f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&gid={gid}")
+    urls.append(f"https://docs.google.com/spreadsheets/d/{doc_id}/export?format=xlsx&gid={gid}")
+    return urls
+
+def fetch_sheet_csv_robust(sheet_url: str, timeout: int = 20):
+    """
+    Robust sheet fetcher:
+      - returns (df, used_url, status_code, snippet)
+      - df is a pandas.DataFrame on success, otherwise None
+      - snippet contains a short response body or error string to help debug
+    """
     doc_id = extract_doc_id(sheet_url)
     if not doc_id:
         return None, None, None, "Could not extract document id from URL."
@@ -93,29 +112,55 @@ def fetch_sheet_csv(sheet_url: str):
     gid = extract_gid(sheet_url)
     candidate_urls = build_export_urls(doc_id, gid)
 
+    headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0 Safari/537.36",
+        "Accept": "text/csv,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+
     last_status = None
     last_snippet = ""
     for url in candidate_urls:
         try:
-            resp = requests.get(url, timeout=20)
+            resp = requests.get(url, timeout=timeout, headers=headers)
         except Exception as e:
             last_status = None
-            last_snippet = str(e)
+            last_snippet = f"Request error: {e}"
             continue
 
         last_status = resp.status_code
+
         if resp.status_code == 200:
+            content_type = resp.headers.get("Content-Type", "")
+            # If it's an xlsx download (from the last candidate), try to parse with pandas.read_excel
+            if "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in content_type or url.endswith("format=xlsx"):
+                try:
+                    df = pd.read_excel(BytesIO(resp.content))
+                    return df, url, resp.status_code, "OK (xlsx parsed)"
+                except Exception as e:
+                    return None, url, resp.status_code, f"Failed to parse xlsx: {e}"
+            # Otherwise try CSV parse; handle gviz wrapper that starts with )]}'
             try:
-                df = pd.read_csv(StringIO(resp.text))
-                return df, url, resp.status_code, resp.text[:800]
+                text = resp.text
+                if text.startswith(")]}'"):
+                    text = "\n".join(text.splitlines()[1:])
+                df = pd.read_csv(StringIO(text))
+                return df, url, resp.status_code, "OK (csv parsed)"
             except Exception as e:
-                return None, url, resp.status_code, f"Fetched content but failed to parse CSV: {e}\nSnippet: {resp.text[:800]}"
+                last_snippet = f"CSV parse error: {e}\nResp snippet: {resp.text[:800]}"
+                continue
         else:
             last_snippet = resp.text[:800]
 
     return None, candidate_urls[-1] if candidate_urls else None, last_status, last_snippet
 
-# Initialize demo data and session state
+# Cache wrapper for the robust fetcher
+@st.cache_data(show_spinner=False)
+def fetch_sheet_cached(sheet_url: str):
+    return fetch_sheet_csv_robust(sheet_url)
+
+# -------------------------
+# App initialization
+# -------------------------
 if "inventory_df" not in st.session_state:
     inv, usage, users = init_data()
     st.session_state.inventory_df = inv
@@ -148,6 +193,9 @@ for i, opt in enumerate(options):
 
 pane = st.container()
 
+# -------------------------
+# UI Sections
+# -------------------------
 def show_status():
     st.subheader("Status Panel")
 
@@ -228,22 +276,21 @@ def show_usage_history():
     if local_img and os.path.exists(local_img):
         img_html = embed_local_image_html(local_img, width=400, height=306)
         if img_html:
-            components.html(img_html, height=330)  # a bit taller to accommodate padding
+            components.html(img_html, height=330)
         else:
-            st.image(local_img, width=400)  # fallback, may preserve aspect ratio
+            st.image(local_img, width=400)
     else:
-        # fallback placeholder as embedded image
         placeholder = f"https://via.placeholder.com/400x306.png?text=Drawer+{selected}+Image+not+found"
         components.html(f'<div style="text-align:center;"><img src="{placeholder}" width="400" height="306" style="object-fit:cover; border-radius:6px;" /></div>', height=330)
 
-    # Fetch and show CSV
+    # Fetch and show CSV (cached)
     sheet_url = DRAWER_URLS.get(selected)
     if not sheet_url:
         st.error("No sheet URL configured for this drawer.")
         return
 
     st.write("Loading sheet as CSV... (attempting multiple export endpoints)")
-    df, used_url, status, snippet = fetch_sheet_csv(sheet_url)
+    df, used_url, status, snippet = fetch_sheet_cached(sheet_url)
 
     if df is None:
         st.error("Failed to load CSV.")
@@ -265,6 +312,76 @@ def show_usage_history():
     st.success(f"Loaded sheet from: {used_url}  (rows: {len(df_sorted)}, cols: {len(df_sorted.columns)})")
     st.dataframe(df_sorted)
     st.download_button("Download sheet CSV", data=df_sorted.to_csv(index=False).encode("utf-8"), file_name=f"drawer_{selected}.csv", mime="text/csv")
+
+def show_missing_items():
+    """
+    For each drawer show a single row with two columns:
+      - Left column: the sheet rows that contain 'removed' in column 2, sorted by first column ascending
+      - Right column: the drawer image (fixed 250x192)
+    """
+    st.subheader("Missing Items")
+
+    any_found_global = False
+
+    for i in range(1, 8):
+        st.markdown(f"### Drawer {i}")
+        left_col, right_col = st.columns([3, 1], gap="small")
+
+        # LEFT: table filtered for 'removed' in second column
+        with left_col:
+            sheet_url = DRAWER_URLS.get(i)
+            if not sheet_url:
+                st.warning(f"No sheet URL configured for Drawer {i}.")
+            else:
+                df, used_url, status, snippet = fetch_sheet_cached(sheet_url)
+                if df is None:
+                    st.error(f"Could not load sheet for Drawer {i}.")
+                    if status:
+                        st.write(f"HTTP status: {status}")
+                    if used_url:
+                        st.write(f"Tried URL: {used_url}")
+                    if snippet:
+                        st.code(snippet)
+                else:
+                    # Ensure at least two columns exist
+                    if df.shape[1] < 2:
+                        st.info("Sheet doesn't have a second column to inspect for 'Removed'.")
+                    else:
+                        first_col = df.columns[0]
+                        second_col = df.columns[1]
+
+                        # Convert first col to numeric for proper sorting
+                        df[first_col] = pd.to_numeric(df[first_col], errors='coerce')
+
+                        # Filter rows where second column contains 'removed' (case-insensitive, word-boundary)
+                        mask = df[second_col].astype(str).str.contains(r"\bremoved\b", case=False, na=False)
+                        df_removed = df[mask].copy()
+
+                        if df_removed.empty:
+                            st.write("No 'Removed' entries found in column 2.")
+                        else:
+                            any_found_global = True
+                            # Sort by first column ascending
+                            df_removed_sorted = df_removed.sort_values(by=first_col, ascending=True, na_position='last').reset_index(drop=True)
+                            st.dataframe(df_removed_sorted)
+
+        # RIGHT: fixed-size image for this drawer
+        with right_col:
+            img_path = DRAWER_IMAGES.get(i)
+            if img_path and os.path.exists(img_path):
+                img_html = embed_local_image_html(img_path, width=250, height=192)
+                if img_html:
+                    components.html(img_html, height=210)
+                else:
+                    st.image(img_path, width=250)
+            else:
+                placeholder = f"https://via.placeholder.com/250x192.png?text=Drawer+{i}"
+                components.html(f'<div style="text-align:center; margin:0;"><img src="{placeholder}" width="250" height="192" style="object-fit:cover; border-radius:6px;" /></div>', height=210)
+
+        st.markdown("---")
+
+    if not any_found_global:
+        st.info("No 'Removed' entries found across all drawer sheets.")
 
 def show_inventory_data():
     st.subheader("Inventory Data")
@@ -290,29 +407,6 @@ def show_inventory_data():
     st.download_button("Download inventory CSV", data=st.session_state.inventory_df.to_csv(index=False), file_name="inventory_export.csv", mime="text/csv")
     st.subheader("Inventory Table")
     st.dataframe(st.session_state.inventory_df.sort_values(["category", "name"]).reset_index(drop=True))
-
-def show_missing_items():
-    st.subheader("Missing Items")
-    inv = st.session_state.inventory_df
-    missing_df = inv[inv["status"] == "missing"].copy()
-    if missing_df.empty:
-        st.success("No missing items! Great job.")
-        return
-    st.dataframe(missing_df.reset_index(drop=True))
-    st.write("Actions")
-    rows = missing_df.to_dict("records")
-    for item in rows:
-        cols = st.columns([3,1])
-        cols[0].write(f"ID {item['id']} — {item['name']} ({item['category']}) — Location: {item['location']} — Qty: {item['quantity']}")
-        if cols[1].button("Mark Found", key=f"found_{item['id']}"):
-            idx = st.session_state.inventory_df.index[st.session_state.inventory_df["id"] == item["id"]].tolist()
-            if idx:
-                st.session_state.inventory_df.at[idx[0], "status"] = "available"
-                st.session_state.inventory_df.at[idx[0], "last_updated"] = datetime.now().isoformat()
-                new_event = {"event_id": int(st.session_state.usage_df["event_id"].max() + 1) if not st.session_state.usage_df.empty else 1,
-                             "item_id": item["id"], "item_name": item["name"], "user": "system", "action": "marked_found", "timestamp": datetime.now().isoformat()}
-                st.session_state.usage_df = pd.concat([st.session_state.usage_df, pd.DataFrame([new_event])], ignore_index=True)
-                st.experimental_rerun()
 
 def show_admin_panel():
     st.subheader("Admin Panel")
