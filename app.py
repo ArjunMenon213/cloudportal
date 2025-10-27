@@ -425,7 +425,7 @@ def show_admin_panel():
         return
 
     # Unlocked view: no "Lock Admin Panel" button — admin will be auto-locked when navigating away.
-    st.markdown('<div class="passcode-box">3721</div>', unsafe_allow_html=True)
+    st.markdown('<div class="passcode-box">Current access passcode for all utilities: 3721</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("### current customers with access")
