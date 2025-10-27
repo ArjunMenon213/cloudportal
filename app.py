@@ -1,6 +1,6 @@
-# Updated Streamlit app: fixes deprecated image parameter and improves Google Sheet CSV fetching/diagnostics.
 import os
 import re
+import base64
 from io import StringIO
 from datetime import datetime, timedelta
 
@@ -41,7 +41,7 @@ DRAWER_URLS = {
     7: "https://docs.google.com/spreadsheets/d/1Dc0myxSLB_dTSR-eFE4BZ8ZjqnSpDBkA/edit?usp=sharing&ouid=115545081311750015459&rtpof=true&sd=true",
 }
 
-# Local images in repo
+# Local images in repo: tools-drawer1.jpg ... tools-drawer7.jpg
 DRAWER_IMAGES = {i: f"tools-drawer{i}.jpg" for i in range(1, 8)}
 
 def extract_doc_id(sheet_url: str) -> str:
@@ -49,29 +49,73 @@ def extract_doc_id(sheet_url: str) -> str:
     return m.group(1) if m else ""
 
 def extract_gid(sheet_url: str) -> str:
-    # try fragment '#gid=...'
     m = re.search(r"[#&]gid=([0-9]+)", sheet_url)
     if m:
         return m.group(1)
-    # sometimes gid is supplied as a query param
     m = re.search(r"[?&]gid=([0-9]+)", sheet_url)
     if m:
         return m.group(1)
     return "0"
 
 def build_export_urls(doc_id: str, gid: str):
-    """
-    Return a list of candidate CSV export URLs to try.
-    We try:
-      1) /export?format=csv&gid={gid}
-      2) /gviz/tq?tqx=out:csv&gid={gid}
-    """
     urls = []
     urls.append(f"https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv&gid={gid}")
     urls.append(f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&gid={gid}")
     return urls
 
-# Initialize demo data and state
+def embed_local_image_html(path: str, width: int = 400, height: int = 306):
+    """
+    Read local image file and return HTML <img> with data URI and fixed dimensions.
+    This avoids use_column_width deprecation and forces the desired width/height.
+    """
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+        b64 = base64.b64encode(data).decode("utf-8")
+        ext = os.path.splitext(path)[1].lower().lstrip(".")
+        mime = f"image/{'jpeg' if ext in ['jpg','jpeg'] else ext}"
+        html = f"""
+        <div style="text-align:center;">
+          <img src="data:{mime};base64,{b64}" width="{width}" height="{height}" style="object-fit:cover; border-radius:6px; display:block; margin-left:auto; margin-right:auto;" />
+        </div>
+        """
+        return html
+    except Exception as e:
+        return None
+
+def fetch_sheet_csv(sheet_url: str):
+    doc_id = extract_doc_id(sheet_url)
+    if not doc_id:
+        return None, None, None, "Could not extract document id from URL."
+
+    gid = extract_gid(sheet_url)
+    candidate_urls = build_export_urls(doc_id, gid)
+
+    last_status = None
+    last_snippet = ""
+    for url in candidate_urls:
+        try:
+            resp = requests.get(url, timeout=20)
+        except Exception as e:
+            last_status = None
+            last_snippet = str(e)
+            continue
+
+        last_status = resp.status_code
+        if resp.status_code == 200:
+            try:
+                df = pd.read_csv(StringIO(resp.text))
+                return df, url, resp.status_code, resp.text[:800]
+            except Exception as e:
+                return None, url, resp.status_code, f"Fetched content but failed to parse CSV: {e}\nSnippet: {resp.text[:800]}"
+        else:
+            last_snippet = resp.text[:800]
+
+    return None, candidate_urls[-1] if candidate_urls else None, last_status, last_snippet
+
+# Initialize demo data and session state
 if "inventory_df" not in st.session_state:
     inv, usage, users = init_data()
     st.session_state.inventory_df = inv
@@ -160,42 +204,6 @@ def show_status():
     with c2:
         st.write("LB 172 - Robotics Research Lab")
 
-def fetch_sheet_csv(sheet_url: str):
-    """
-    Try multiple export endpoints and return (df, used_url, resp_status, resp_text_snippet)
-    If all attempts fail, return (None, last_url_tried, status, snippet)
-    """
-    doc_id = extract_doc_id(sheet_url)
-    if not doc_id:
-        return None, None, None, "Could not extract document id from URL."
-
-    gid = extract_gid(sheet_url)
-    candidate_urls = build_export_urls(doc_id, gid)
-
-    last_status = None
-    last_snippet = ""
-    for url in candidate_urls:
-        try:
-            resp = requests.get(url, timeout=20)
-        except Exception as e:
-            last_status = None
-            last_snippet = str(e)
-            continue
-
-        last_status = resp.status_code
-        # if successful, parse CSV
-        if resp.status_code == 200:
-            try:
-                df = pd.read_csv(StringIO(resp.text))
-                return df, url, resp.status_code, resp.text[:800]
-            except Exception as e:
-                return None, url, resp.status_code, f"Fetched content but failed to parse CSV: {e}\nSnippet: {resp.text[:800]}"
-        else:
-            # store snippet to help debug permission/server errors
-            last_snippet = resp.text[:800]
-
-    return None, candidate_urls[-1] if candidate_urls else None, last_status, last_snippet
-
 def show_usage_history():
     st.subheader("Usage History")
     st.write("Select a drawer to view its image and sheet:")
@@ -215,12 +223,18 @@ def show_usage_history():
 
     st.write(f"Displaying: Drawer {selected}")
 
-    # Show local repository image first (use_container_width instead of deprecated use_column_width)
+    # Show local repository image first with fixed dimensions 400x306
     local_img = DRAWER_IMAGES.get(selected)
     if local_img and os.path.exists(local_img):
-        st.image(local_img, use_container_width=True)
+        img_html = embed_local_image_html(local_img, width=400, height=306)
+        if img_html:
+            components.html(img_html, height=330)  # a bit taller to accommodate padding
+        else:
+            st.image(local_img, width=400)  # fallback, may preserve aspect ratio
     else:
-        st.image(f"https://via.placeholder.com/1000x220.png?text=Drawer+{selected}+Image+not+found", use_container_width=True)
+        # fallback placeholder as embedded image
+        placeholder = f"https://via.placeholder.com/400x306.png?text=Drawer+{selected}+Image+not+found"
+        components.html(f'<div style="text-align:center;"><img src="{placeholder}" width="400" height="306" style="object-fit:cover; border-radius:6px;" /></div>', height=330)
 
     # Fetch and show CSV
     sheet_url = DRAWER_URLS.get(selected)
