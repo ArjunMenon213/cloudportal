@@ -300,37 +300,69 @@ def show_inventory_data():
     st.dataframe(st.session_state.inventory_df.sort_values(["category", "name"]).reset_index(drop=True))
 
 def show_missing_items():
-    st.subheader("Missing Items")
-    inv = st.session_state.inventory_df
-    missing_df = inv[inv["status"] == "missing"].copy()
-    if missing_df.empty:
-        st.success("No missing items! Great job.")
-        return
+    """
+    Reworked missing tab:
+    - Remove the original missing items list/actions.
+    - Show only images aligned vertically on the right (width=250, height=191).
+    - For each drawer (1..7), fetch its sheet and display only rows where the second column
+      contains the word 'removed' (case-insensitive). The filtered table for each drawer is
+      shown to the left of the corresponding images column. If the sheet cannot be loaded or
+      has no matching rows, a small note is shown instead.
+    - IMPORTANT: fetch_sheet_csv logic remains unchanged; downloads and CSV parsing are preserved.
+    """
+    st.subheader("Missing Items — Removed Listings by Drawer")
 
-    # Layout: left column for list/actions, right column for vertically stacked drawer images (Drawer 1..7)
+    # Two-column layout: left for filtered tables, right for vertically stacked images
     left_col, right_col = st.columns([3, 1])
-    with left_col:
-        st.dataframe(missing_df.reset_index(drop=True))
-        st.write("Actions")
-        rows = missing_df.to_dict("records")
-        for item in rows:
-            cols = st.columns([3,1])
-            cols[0].write(f"ID {item['id']} — {item['name']} ({item['category']}) — Location: {item['location']} — Qty: {item['quantity']}")
-            if cols[1].button("Mark Found", key=f"found_{item['id']}"):
-                idx = st.session_state.inventory_df.index[st.session_state.inventory_df["id"] == item["id"]].tolist()
-                if idx:
-                    st.session_state.inventory_df.at[idx[0], "status"] = "available"
-                    st.session_state.inventory_df.at[idx[0], "last_updated"] = datetime.now().isoformat()
-                    new_event = {"event_id": int(st.session_state.usage_df["event_id"].max() + 1) if not st.session_state.usage_df.empty else 1,
-                                 "item_id": item["id"], "item_name": item["name"], "user": "system", "action": "marked_found", "timestamp": datetime.now().isoformat()}
-                    st.session_state.usage_df = pd.concat([st.session_state.usage_df, pd.DataFrame([new_event])], ignore_index=True)
-                    st.experimental_rerun()
 
-    # Right column: show all drawer images aligned vertically from Drawer 1 down to Drawer 7
+    with left_col:
+        st.write("Filtered 'removed' entries from each drawer's sheet (column 2 scanned for 'removed').")
+        # For each drawer, fetch the sheet and display the filtered rows (only column 2 scanned)
+        for i in range(1, 8):
+            st.markdown(f"**Drawer {i}**")
+            sheet_url = DRAWER_URLS.get(i)
+            if not sheet_url:
+                st.info(f"Drawer {i}: no sheet URL configured.")
+                continue
+
+            df, used_url, status, snippet = fetch_sheet_csv(sheet_url)
+            if df is None:
+                st.warning(f"Drawer {i}: failed to load sheet. Last status: {status}")
+                if used_url:
+                    st.write(f"Last tried URL: {used_url}")
+                if snippet:
+                    st.code(snippet)
+                continue
+
+            # If sheet has fewer than 2 columns, cannot scan column 2
+            if df.shape[1] < 2:
+                st.info(f"Drawer {i}: sheet has fewer than 2 columns; nothing to scan for 'removed'.")
+                continue
+
+            # Identify second column (index 1) and filter rows where it contains 'removed' (case-insensitive)
+            second_col = df.columns[1]
+            try:
+                mask = df[second_col].astype(str).str.lower().str.contains("removed", na=False)
+            except Exception:
+                # Fallback: treat values as strings and perform a basic check
+                mask = df[second_col].astype(str).str.lower().str.contains("removed", na=False)
+
+            filtered = df[mask].reset_index(drop=True)
+
+            if filtered.empty:
+                st.write("No 'removed' listings found in this drawer.")
+            else:
+                # display up to first 6 columns for visual consistency (but keep full data intact if needed)
+                if filtered.shape[1] > 6:
+                    filtered_display = filtered.iloc[:, :6].copy()
+                else:
+                    filtered_display = filtered.copy()
+                st.dataframe(filtered_display)
+
+    # Right column: images stacked vertically (Drawer 1..7), requested size 250x191
     with right_col:
         for i in range(1, 8):
             img_path = DRAWER_IMAGES.get(i)
-            # Use requested size: width=250, height=191
             if img_path and os.path.exists(img_path):
                 img_html = embed_local_image_html(img_path, width=250, height=191)
                 if img_html:
