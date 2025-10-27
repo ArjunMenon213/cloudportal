@@ -13,6 +13,9 @@ st.set_page_config(page_title="TRACKER", layout="wide")
 
 TITLE = "TRACKER : Automated tool inventory management online inventory management portal"
 
+# -------------------------
+# Demo data initializer
+# -------------------------
 def init_data():
     inventory = pd.DataFrame([
         {"id": 1, "name": "Cordless Drill", "category": "Power Tools", "quantity": 5, "location": "Shelf A1", "status": "available", "last_updated": datetime.now().isoformat()},
@@ -30,7 +33,9 @@ def init_data():
     users = ["alice", "bob", "charlie", "admin"]
     return inventory, usage, users
 
-# Drawer Google Sheet URLs (as provided)
+# -------------------------
+# Configs: sheet URLs & images
+# -------------------------
 DRAWER_URLS = {
     1: "https://docs.google.com/spreadsheets/d/1tbGORyBH36yx2R_iR1IYcHu4MwbSKrfE/edit?usp=drive_link&ouid=115545081311750015459&rtpof=true&sd=true",
     2: "https://docs.google.com/spreadsheets/d/1JOYSm855CuvnA6d-QXZC82Vpe0BrlrWi/edit?usp=sharing&ouid=115545081311750015459&rtpof=true&sd=true",
@@ -41,12 +46,13 @@ DRAWER_URLS = {
     7: "https://docs.google.com/spreadsheets/d/1Dc0myxSLB_dTSR-eFE4BZ8ZjqnSpDBkA/edit?usp=sharing&ouid=115545081311750015459&rtpof=true&sd=true",
 }
 
-# Local images in repo: tools-drawer1.jpg ... tools-drawer7.jpg
 DRAWER_IMAGES = {i: f"tools-drawer{i}.jpg" for i in range(1, 8)}
 
-# Customer sheet URL for Admin panel (as requested)
 CUSTOMER_SHEET_URL = "https://docs.google.com/spreadsheets/d/1zpeOkT6cBPOMlVWeqHG9YLpEaT8YTIse/edit?usp=sharing&ouid=115545081311750015459&rtpof=true&sd=true"
 
+# -------------------------
+# Helpers
+# -------------------------
 def extract_doc_id(sheet_url: str) -> str:
     m = re.search(r"/d/([a-zA-Z0-9-_]+)", sheet_url)
     return m.group(1) if m else ""
@@ -67,10 +73,6 @@ def build_export_urls(doc_id: str, gid: str):
     return urls
 
 def embed_local_image_html(path: str, width: int = 400, height: int = 306):
-    """
-    Read local image file and return HTML <img> with data URI and fixed dimensions.
-    This avoids use_column_width deprecation and forces the desired width/height.
-    """
     if not os.path.exists(path):
         return None
     try:
@@ -85,7 +87,7 @@ def embed_local_image_html(path: str, width: int = 400, height: int = 306):
         </div>
         """
         return html
-    except Exception as e:
+    except Exception:
         return None
 
 def fetch_sheet_csv(sheet_url: str):
@@ -118,7 +120,9 @@ def fetch_sheet_csv(sheet_url: str):
 
     return None, candidate_urls[-1] if candidate_urls else None, last_status, last_snippet
 
-# Initialize demo data and session state
+# -------------------------
+# Initialize session state
+# -------------------------
 if "inventory_df" not in st.session_state:
     inv, usage, users = init_data()
     st.session_state.inventory_df = inv
@@ -127,9 +131,11 @@ if "inventory_df" not in st.session_state:
     st.session_state.selected = "Status"
     st.session_state.master_control = True
     st.session_state.selected_drawer = None
-    st.session_state.admin_unlocked = False  # track admin access
+    st.session_state.admin_unlocked = False
 
-# Minimal styling
+# -------------------------
+# Styles
+# -------------------------
 st.markdown(
     """
     <style>
@@ -163,7 +169,7 @@ st.markdown(
 
 st.title(TITLE)
 
-# Top nav bar (buttons)
+# Top nav bar
 options = ["Status", "Usage History", "Inventory Data", "Missing Items", "Admin Panel"]
 cols = st.columns([1,1,1,1,1], gap="small")
 for i, opt in enumerate(options):
@@ -173,17 +179,18 @@ for i, opt in enumerate(options):
 
 pane = st.container()
 
+# -------------------------
+# Page panes
+# -------------------------
 def show_status():
     st.subheader("Status Panel")
 
-    # Row 1: Current Status - green pill
     c1, c2 = st.columns([2, 4])
     with c1:
         st.write("1. Current Status")
     with c2:
         st.markdown('<span class="status-pill">ONLINE</span>', unsafe_allow_html=True)
 
-    # Row 2: Master Control - checkbox that toggles visually only
     c1, c2 = st.columns([2, 4])
     with c1:
         st.write("2. Master Control")
@@ -192,7 +199,6 @@ def show_status():
         st.write("ON" if master else "OFF")
         st.session_state.master_control = master
 
-    # Row 3: Current Time - show browser time via client-side JS
     c1, c2 = st.columns([2, 4])
     with c1:
         st.write("3. Current Time")
@@ -215,14 +221,12 @@ def show_status():
         """
         components.html(clock_html, height=40)
 
-    # Row 4: Current Location (static)
     c1, c2 = st.columns([2, 4])
     with c1:
         st.write("4. Current Location")
     with c2:
         st.write("Lehman Building of engineering")
 
-    # Row 5: Current Room (static)
     c1, c2 = st.columns([2, 4])
     with c1:
         st.write("5. Current Room")
@@ -233,7 +237,6 @@ def show_usage_history():
     st.subheader("Usage History")
     st.write("Select a drawer to view its image and sheet:")
 
-    # Horizontal row of 7 buttons
     btn_cols = st.columns(7, gap="small")
     for i in range(1, 8):
         with btn_cols[i-1]:
@@ -248,20 +251,17 @@ def show_usage_history():
 
     st.write(f"Displaying: Drawer {selected}")
 
-    # Show local repository image first with fixed dimensions 400x306
     local_img = DRAWER_IMAGES.get(selected)
     if local_img and os.path.exists(local_img):
         img_html = embed_local_image_html(local_img, width=400, height=306)
         if img_html:
-            components.html(img_html, height=330)  # a bit taller to accommodate padding
+            components.html(img_html, height=330)
         else:
-            st.image(local_img, width=400)  # fallback, may preserve aspect ratio
+            st.image(local_img, width=400)
     else:
-        # fallback placeholder as embedded image
         placeholder = f"https://via.placeholder.com/400x306.png?text=Drawer+{selected}+Image+not+found"
         components.html(f'<div style="text-align:center;"><img src="{placeholder}" width="400" height="306" style="object-fit:cover; border-radius:6px;" /></div>', height=330)
 
-    # Fetch and show CSV
     sheet_url = DRAWER_URLS.get(selected)
     if not sheet_url:
         st.error("No sheet URL configured for this drawer.")
@@ -282,21 +282,17 @@ def show_usage_history():
         st.info("Common fixes: set the sheet's Share → 'Anyone with the link' → Viewer, or Publish → 'Publish to web' for that sheet/tab. If sheets are private, use a service account (gspread).")
         return
 
-    # Sort by first column ascending (convert to numeric if possible)
     first_col = df.columns[0]
     df[first_col] = pd.to_numeric(df[first_col], errors='coerce')
     df_sorted = df.sort_values(by=first_col, ascending=True, na_position='last').reset_index(drop=True)
 
-    # --- Display only up to 6 columns in the UI, but keep the full dataframe for download/logic ---
     if df_sorted.shape[1] > 6:
         df_display = df_sorted.iloc[:, :6].copy()
     else:
         df_display = df_sorted.copy()
 
     st.success(f"Loaded sheet from: {used_url}  (rows: {len(df_sorted)}, cols: {len(df_sorted.columns)})")
-    # Show only the first 6 columns (or fewer if sheet has <6 cols)
     st.dataframe(df_display)
-    # Keep download as full CSV to avoid changing sheet export logic
     st.download_button("Download sheet CSV", data=df_sorted.to_csv(index=False).encode("utf-8"), file_name=f"drawer_{selected}.csv", mime="text/csv")
 
 def show_inventory_data():
@@ -320,41 +316,29 @@ def show_inventory_data():
                 st.session_state.inventory_df = pd.concat([st.session_state.inventory_df, pd.DataFrame([new_item])], ignore_index=True)
                 st.success(f"Added item '{name}' (id: {new_id})")
 
-    st.download_button("Download inventory CSV", data=st.session_state.inventory_df.to_csv(index=False), file_name="inventory_export.csv", mime="text/csv")
+    st.download_button("Download inventory CSV", data=st.session_state.inventory_df.to_csv(index=False).encode("utf-8"), file_name="inventory_export.csv", mime="text/csv")
     st.subheader("Inventory Table")
     st.dataframe(st.session_state.inventory_df.sort_values(["category", "name"]).reset_index(drop=True))
 
 def show_missing_items():
     """
-    For each drawer (1..7) render a single row containing:
-      - left: the "currently removed" items computed by grouping on the first column and
-              checking the last entry (chronological) of each group for the word 'removed'
-              (searching the second column for the action).
-      - right: the drawer image sized width=250 height=191.
-
-    The logic:
-      - keep sheet-fetching/export logic unchanged (fetch_sheet_csv).
-      - assume CSV rows are chronological in file order (first row = earliest).
-      - group rows by the first column's value, determine each group's last row (by order),
-        and consider the item "missing" if that last row's second-column value contains 'removed'
-        (case-insensitive).
-      - display the last-row entries for items that are currently removed.
+    For each drawer (1..7) render one row: left=currently removed items (by grouping on col1 and
+    taking group's last entry and checking col2 for 'removed'), right=image (250x191).
+    Each row has a fixed height so image and table align.
     """
     st.subheader("Missing Items — Currently Removed (based on last history entry)")
 
-    # Per-drawer rows: each drawer gets its own two-column row so table and image stay aligned
-    row_table_height = 200  # px; dataframe will be shown with this height so images align
+    row_table_height = 200
 
     for i in range(1, 8):
         st.markdown(f"### Drawer {i}")
         left_col, right_col = st.columns([3, 1])
 
-        # LEFT: compute "currently removed" entries using last-entry-per-group logic
+        # LEFT: compute currently removed items
         with left_col:
             sheet_url = DRAWER_URLS.get(i)
             if not sheet_url:
                 st.info(f"Drawer {i}: no sheet URL configured.")
-                # spacer so heights remain consistent
                 components.html(f'<div style="height:{row_table_height}px;"></div>', height=8)
             else:
                 df, used_url, status, snippet = fetch_sheet_csv(sheet_url)
@@ -366,23 +350,18 @@ def show_missing_items():
                         st.code(snippet)
                     components.html(f'<div style="height:{row_table_height}px;"></div>', height=8)
                 else:
-                    # Need at least 2 columns: first column is grouping key, second column contains the action text
                     if df.shape[1] < 2:
                         st.info(f"Drawer {i}: sheet has fewer than 2 columns; cannot determine last action.")
                         components.html(f'<div style="height:{row_table_height}px;"></div>', height=8)
                     else:
                         first_col = df.columns[0]
                         second_col = df.columns[1]
-
-                        # Keep original row order (assume file order is chronological). Use groupby to get last row index per group.
+                        # group and get last row per key (preserve file order)
                         try:
-                            # groupby preserves the order of appearance when sort=False
                             last_indices = df.groupby(df[first_col], sort=False).apply(lambda g: g.index[-1])
-                            # last_indices is a Series with group keys -> index; get the indices as list
                             last_idx_list = list(last_indices.values)
                             last_rows = df.loc[last_idx_list].reset_index(drop=True)
                         except Exception:
-                            # fallback: for safety, compute by iterating groups
                             grouped = {}
                             for idx, row in df.iterrows():
                                 key = row[first_col]
@@ -390,7 +369,6 @@ def show_missing_items():
                             last_idx_list = list(grouped.values())
                             last_rows = df.loc[last_idx_list].reset_index(drop=True)
 
-                        # Now filter last_rows where second_col contains 'removed' (case-insensitive)
                         mask = last_rows[second_col].astype(str).str.lower().str.contains("removed", na=False)
                         currently_removed = last_rows[mask].reset_index(drop=True)
 
@@ -398,14 +376,13 @@ def show_missing_items():
                             st.write("No currently removed items found in this drawer (based on the last history entry).")
                             components.html(f'<div style="height:{row_table_height}px;"></div>', height=8)
                         else:
-                            # Show only up to 6 columns for visual consistency
                             if currently_removed.shape[1] > 6:
                                 display_df = currently_removed.iloc[:, :6].copy()
                             else:
                                 display_df = currently_removed.copy()
                             st.dataframe(display_df, height=row_table_height)
 
-        # RIGHT: image sized 250x191
+        # RIGHT: image
         with right_col:
             img_path = DRAWER_IMAGES.get(i)
             if img_path and os.path.exists(img_path):
@@ -421,17 +398,13 @@ def show_missing_items():
 
 def show_admin_panel():
     """
-    Admin panel locked behind the passcode; removed use of st.experimental_rerun() to avoid AttributeError.
-    - Enter passcode "3721" to unlock the admin panel.
-    - When unlocked, shows the large green passcode box, customers sheet, download button,
-      and an 'Edit Customer access Credentials' link to open the sheet.
-    - Use the "Lock Admin Panel" button to lock again (session-only).
+    Admin panel locked behind passcode "3721".
+    No use of st.experimental_rerun() to avoid runtime errors.
     """
     st.subheader("Admin Panel")
 
     unlocked = st.session_state.get("admin_unlocked", False)
 
-    # If not unlocked, show passcode entry UI
     if not unlocked:
         st.write("Admin access requires passcode.")
         entered = st.text_input("Enter passcode to unlock admin panel", type="password", key="admin_pass_input")
@@ -439,29 +412,24 @@ def show_admin_panel():
             if entered == "3721":
                 st.session_state.admin_unlocked = True
                 st.success("Admin panel unlocked.")
-                # No st.experimental_rerun() call — Streamlit will rerun on the button click automatically.
+                # rely on Streamlit re-run triggered by the button click itself; return now.
                 return
             else:
                 st.error("Incorrect passcode.")
                 return
+        return
 
-    # If we get here, admin_unlocked is True
-    # Large green highlighted passcode box
+    # Unlocked view
     st.markdown('<div class="passcode-box">3721</div>', unsafe_allow_html=True)
 
-    # Lock button so admin can lock the panel explicitly
     if st.button("Lock Admin Panel"):
         st.session_state.admin_unlocked = False
         st.success("Admin panel locked.")
         return
 
-    # horizontal separator
     st.markdown("---")
-
-    # Title for the customers sheet
     st.markdown("### current customers with access")
 
-    # Load and display the provided Google Sheet using existing fetch logic
     st.write("Loading customers sheet... (attempting multiple export endpoints)")
     df, used_url, status, snippet = fetch_sheet_csv(CUSTOMER_SHEET_URL)
 
@@ -477,7 +445,6 @@ def show_admin_panel():
         st.info("Common fixes: set the sheet's Share → 'Anyone with the link' → Viewer, or Publish → 'Publish to web' for that sheet/tab.")
         return
 
-    # Display only first 6 columns in the UI for consistency (full CSV available for download)
     if df.shape[1] > 6:
         df_display = df.iloc[:, :6].copy()
     else:
@@ -487,11 +454,30 @@ def show_admin_panel():
     st.dataframe(df_display)
     st.download_button("Download customers CSV", data=df.to_csv(index=False).encode("utf-8"), file_name="current_customers.csv", mime="text/csv")
 
-    # "Edit Customer access Credentials" button linking to the sheet
     edit_button_html = f'''
       <div style="margin-top:12px;">
         <a class="edit-link-btn" href="{CUSTOMER_SHEET_URL}" target="_blank" rel="noopener noreferrer">Edit Customer access Credentials</a>
       </div>
     '''
     st.markdown(edit_button_html, unsafe_allow_html=True)
+
+# -------------------------
+# Render selected pane
+# -------------------------
+with pane:
+    selected = st.session_state.selected
+    if selected == "Status":
+        show_status()
+    elif selected == "Usage History":
+        show_usage_history()
+    elif selected == "Inventory Data":
+        show_inventory_data()
+    elif selected == "Missing Items":
+        show_missing_items()
+    elif selected == "Admin Panel":
+        show_admin_panel()
+    else:
+        st.write("Select a section from the bar above.")
+
+st.markdown("----")
 st.caption("This is a demo Streamlit app. Data is stored only for the current session. For production use, connect to a database and add authentication.")
