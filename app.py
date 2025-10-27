@@ -82,8 +82,8 @@ def embed_local_image_html(path: str, width: int = 400, height: int = 306):
         ext = os.path.splitext(path)[1].lower().lstrip(".")
         mime = f"image/{'jpeg' if ext in ['jpg','jpeg'] else ext}"
         html = f"""
-        <div style="text-align:center;">
-          <img src="data:{mime};base64,{b64}" width="{width}" height="{height}" style="object-fit:cover; border-radius:6px; display:block; margin-left:auto; margin-right:auto;" />
+        <div style="text-align:left;">
+          <img src="data:{mime};base64,{b64}" width="{width}" height="{height}" style="object-fit:cover; border-radius:6px; display:block;" />
         </div>
         """
         return html
@@ -167,7 +167,26 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title(TITLE)
+# -------------------------
+# Top banner + title row
+# -------------------------
+# Show topbanner.png on the top-left beside the title. File expected at repo root as "topbanner.png".
+left_col, right_col = st.columns([1, 8], gap="small")
+with left_col:
+    banner_path = "topbanner.png"
+    if os.path.exists(banner_path):
+        banner_html = embed_local_image_html(banner_path, width=120, height=60)
+        if banner_html:
+            components.html(banner_html, height=70)
+        else:
+            st.image(banner_path, width=120)
+    else:
+        # fallback placeholder if banner not found locally
+        components.html(f'<div style="text-align:left;"><img src="https://via.placeholder.com/120x60.png?text=Banner" width="120" height="60" style="object-fit:cover; border-radius:6px; display:block;" /></div>', height=70)
+
+with right_col:
+    # Keep the title alongside the banner
+    st.markdown(f"<h1 style='margin:8px 0 0 8px;'>{TITLE}</h1>", unsafe_allow_html=True)
 
 # Top nav bar
 options = ["Status", "Usage History", "Inventory Data", "Missing Items", "Admin Panel"]
@@ -425,7 +444,7 @@ def show_admin_panel():
         return
 
     # Unlocked view: no "Lock Admin Panel" button — admin will be auto-locked when navigating away.
-    st.markdown('<div class="passcode-box">Current access passcode for all utilities: 3721</div>', unsafe_allow_html=True)
+    st.markdown('<div class="passcode-box">3721</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("### current customers with access")
