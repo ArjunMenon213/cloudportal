@@ -170,12 +170,12 @@ st.markdown(
 # -------------------------
 # Top banner + title row
 # -------------------------
-# Show topbanner.png on the top-left beside the title. File expected at repo root as "topbanner.png".
+# Show .jpganner.png on the top-left beside the title. File expected at repo root as "topbanner.png".
 left_col, right_col = st.columns([1, 8], gap="small")
 with left_col:
     banner_path = "topbanner.png"
     if os.path.exists(banner_path):
-        banner_html = embed_local_image_html(banner_path, width=120, height=60)
+        banner_html = embed_local_image_html(banner_path, width=600, height=106)
         if banner_html:
             components.html(banner_html, height=70)
         else:
