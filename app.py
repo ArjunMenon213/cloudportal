@@ -63,9 +63,10 @@ def build_export_urls(doc_id: str, gid: str):
     urls.append(f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&gid={gid}")
     return urls
 
-def embed_local_image_html(path: str, width: int = 250, height: int = 192):
+def embed_local_image_html(path: str, width: int = 400, height: int = 306):
     """
     Read local image file and return HTML <img> with data URI and fixed dimensions.
+    This avoids use_column_width deprecation and forces the desired width/height.
     """
     if not os.path.exists(path):
         return None
@@ -76,20 +77,15 @@ def embed_local_image_html(path: str, width: int = 250, height: int = 192):
         ext = os.path.splitext(path)[1].lower().lstrip(".")
         mime = f"image/{'jpeg' if ext in ['jpg','jpeg'] else ext}"
         html = f"""
-        <div style="text-align:center; margin:0;">
+        <div style="text-align:center;">
           <img src="data:{mime};base64,{b64}" width="{width}" height="{height}" style="object-fit:cover; border-radius:6px; display:block; margin-left:auto; margin-right:auto;" />
         </div>
         """
         return html
-    except Exception:
+    except Exception as e:
         return None
 
-@st.cache_data(show_spinner=False)
-def fetch_sheet_csv_cached(sheet_url: str):
-    """
-    Try multiple export endpoints and return (df, used_url, resp_status, resp_text_snippet)
-    Cached to avoid re-fetching during the session.
-    """
+def fetch_sheet_csv(sheet_url: str):
     doc_id = extract_doc_id(sheet_url)
     if not doc_id:
         return None, None, None, "Could not extract document id from URL."
@@ -227,15 +223,16 @@ def show_usage_history():
 
     st.write(f"Displaying: Drawer {selected}")
 
-    # Show local repository image first with fixed dimensions 400x306 (previous behavior)
+    # Show local repository image first with fixed dimensions 400x306
     local_img = DRAWER_IMAGES.get(selected)
     if local_img and os.path.exists(local_img):
         img_html = embed_local_image_html(local_img, width=400, height=306)
         if img_html:
-            components.html(img_html, height=330)
+            components.html(img_html, height=330)  # a bit taller to accommodate padding
         else:
-            st.image(local_img, width=400)
+            st.image(local_img, width=400)  # fallback, may preserve aspect ratio
     else:
+        # fallback placeholder as embedded image
         placeholder = f"https://via.placeholder.com/400x306.png?text=Drawer+{selected}+Image+not+found"
         components.html(f'<div style="text-align:center;"><img src="{placeholder}" width="400" height="306" style="object-fit:cover; border-radius:6px;" /></div>', height=330)
 
@@ -246,7 +243,7 @@ def show_usage_history():
         return
 
     st.write("Loading sheet as CSV... (attempting multiple export endpoints)")
-    df, used_url, status, snippet = fetch_sheet_csv_cached(sheet_url)
+    df, used_url, status, snippet = fetch_sheet_csv(sheet_url)
 
     if df is None:
         st.error("Failed to load CSV.")
@@ -268,79 +265,6 @@ def show_usage_history():
     st.success(f"Loaded sheet from: {used_url}  (rows: {len(df_sorted)}, cols: {len(df_sorted.columns)})")
     st.dataframe(df_sorted)
     st.download_button("Download sheet CSV", data=df_sorted.to_csv(index=False).encode("utf-8"), file_name=f"drawer_{selected}.csv", mime="text/csv")
-
-def show_missing_items():
-    """
-    For each drawer show a single row with two columns:
-      - Left column: the sheet rows that contain 'removed' in column 2, sorted by first column ascending
-      - Right column: the drawer image (fixed 250x192)
-    This ensures the image is vertically aligned next to its corresponding filtered table.
-    """
-    st.subheader("Missing Items")
-
-    any_found_global = False
-
-    for i in range(1, 8):
-        st.markdown(f"### Drawer {i}")
-        left_col, right_col = st.columns([3, 1], gap="small")
-
-        # LEFT: table filtered for 'removed' in second column
-        with left_col:
-            sheet_url = DRAWER_URLS.get(i)
-            if not sheet_url:
-                st.warning(f"No sheet URL configured for Drawer {i}.")
-            else:
-                df, used_url, status, snippet = fetch_sheet_csv_cached(sheet_url)
-                if df is None:
-                    st.error(f"Could not load sheet for Drawer {i}.")
-                    if status:
-                        st.write(f"HTTP status: {status}")
-                    if used_url:
-                        st.write(f"Tried URL: {used_url}")
-                    if snippet:
-                        st.code(snippet)
-                else:
-                    # Ensure at least two columns exist
-                    if df.shape[1] < 2:
-                        st.info("Sheet doesn't have a second column to inspect for 'Removed'.")
-                    else:
-                        first_col = df.columns[0]
-                        second_col = df.columns[1]
-
-                        # Convert first col to numeric for proper sorting
-                        df[first_col] = pd.to_numeric(df[first_col], errors='coerce')
-
-                        # Filter rows where second column contains 'removed' (case-insensitive, word-boundary)
-                        mask = df[second_col].astype(str).str.contains(r"\bremoved\b", case=False, na=False)
-                        df_removed = df[mask].copy()
-
-                        if df_removed.empty:
-                            st.write("No 'Removed' entries found in column 2.")
-                        else:
-                            any_found_global = True
-                            # Sort by first column ascending
-                            df_removed_sorted = df_removed.sort_values(by=first_col, ascending=True, na_position='last').reset_index(drop=True)
-                            st.dataframe(df_removed_sorted)
-
-        # RIGHT: fixed-size image for this drawer
-        with right_col:
-            img_path = DRAWER_IMAGES.get(i)
-            if img_path and os.path.exists(img_path):
-                img_html = embed_local_image_html(img_path, width=250, height=192)
-                if img_html:
-                    # show image; height slightly larger than image to avoid clipping
-                    components.html(img_html, height=210)
-                else:
-                    st.image(img_path, width=250)
-            else:
-                placeholder = f"https://via.placeholder.com/250x192.png?text=Drawer+{i}"
-                components.html(f'<div style="text-align:center; margin:0;"><img src="{placeholder}" width="250" height="192" style="object-fit:cover; border-radius:6px;" /></div>', height=210)
-
-        # small separator between drawers
-        st.markdown("---")
-
-    if not any_found_global:
-        st.info("No 'Removed' entries found across all drawer sheets.")
 
 def show_inventory_data():
     st.subheader("Inventory Data")
@@ -366,6 +290,29 @@ def show_inventory_data():
     st.download_button("Download inventory CSV", data=st.session_state.inventory_df.to_csv(index=False), file_name="inventory_export.csv", mime="text/csv")
     st.subheader("Inventory Table")
     st.dataframe(st.session_state.inventory_df.sort_values(["category", "name"]).reset_index(drop=True))
+
+def show_missing_items():
+    st.subheader("Missing Items")
+    inv = st.session_state.inventory_df
+    missing_df = inv[inv["status"] == "missing"].copy()
+    if missing_df.empty:
+        st.success("No missing items! Great job.")
+        return
+    st.dataframe(missing_df.reset_index(drop=True))
+    st.write("Actions")
+    rows = missing_df.to_dict("records")
+    for item in rows:
+        cols = st.columns([3,1])
+        cols[0].write(f"ID {item['id']} — {item['name']} ({item['category']}) — Location: {item['location']} — Qty: {item['quantity']}")
+        if cols[1].button("Mark Found", key=f"found_{item['id']}"):
+            idx = st.session_state.inventory_df.index[st.session_state.inventory_df["id"] == item["id"]].tolist()
+            if idx:
+                st.session_state.inventory_df.at[idx[0], "status"] = "available"
+                st.session_state.inventory_df.at[idx[0], "last_updated"] = datetime.now().isoformat()
+                new_event = {"event_id": int(st.session_state.usage_df["event_id"].max() + 1) if not st.session_state.usage_df.empty else 1,
+                             "item_id": item["id"], "item_name": item["name"], "user": "system", "action": "marked_found", "timestamp": datetime.now().isoformat()}
+                st.session_state.usage_df = pd.concat([st.session_state.usage_df, pd.DataFrame([new_event])], ignore_index=True)
+                st.experimental_rerun()
 
 def show_admin_panel():
     st.subheader("Admin Panel")
@@ -417,3 +364,6 @@ with pane:
         show_admin_panel()
     else:
         st.write("Select a section from the bar above.")
+
+st.markdown("----")
+st.caption("This is a demo Streamlit app. Data is stored only for the current session. For production use, connect to a database and add authentication.")
