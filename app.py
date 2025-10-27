@@ -301,78 +301,74 @@ def show_inventory_data():
 
 def show_missing_items():
     """
-    Reworked missing tab:
-    - Remove the original missing items list/actions.
-    - Show only images aligned vertically on the right (width=250, height=191).
-    - For each drawer (1..7), fetch its sheet and display only rows where the second column
-      contains the word 'removed' (case-insensitive). The filtered table for each drawer is
-      shown to the left of the corresponding images column. If the sheet cannot be loaded or
-      has no matching rows, a small note is shown instead.
-    - IMPORTANT: fetch_sheet_csv logic remains unchanged; downloads and CSV parsing are preserved.
+    For each drawer (1..7) render a single row containing:
+      - left: the filtered 'removed' rows (scan column 2 for 'removed') limited to first 6 columns for display,
+              with a fixed dataframe height so the right image aligns vertically,
+      - right: the drawer image sized width=250 height=191.
+    This ensures the image and its corresponding filtered table stay together.
     """
     st.subheader("Missing Items — Removed Listings by Drawer")
 
-    # Two-column layout: left for filtered tables, right for vertically stacked images
-    left_col, right_col = st.columns([3, 1])
+    # Per-drawer rows: each drawer gets its own two-column row so table and image stay aligned
+    row_table_height = 200  # px; dataframe will be shown with this height so images align
 
-    with left_col:
-        st.write("Filtered 'removed' entries from each drawer's sheet (column 2 scanned for 'removed').")
-        # For each drawer, fetch the sheet and display the filtered rows (only column 2 scanned)
-        for i in range(1, 8):
-            st.markdown(f"**Drawer {i}**")
+    for i in range(1, 8):
+        st.markdown(f"### Drawer {i}")
+        left_col, right_col = st.columns([3, 1])
+
+        # LEFT: filtered table or informative placeholder (fixed height)
+        with left_col:
             sheet_url = DRAWER_URLS.get(i)
             if not sheet_url:
                 st.info(f"Drawer {i}: no sheet URL configured.")
-                continue
-
-            df, used_url, status, snippet = fetch_sheet_csv(sheet_url)
-            if df is None:
-                st.warning(f"Drawer {i}: failed to load sheet. Last status: {status}")
-                if used_url:
-                    st.write(f"Last tried URL: {used_url}")
-                if snippet:
-                    st.code(snippet)
-                continue
-
-            # If sheet has fewer than 2 columns, cannot scan column 2
-            if df.shape[1] < 2:
-                st.info(f"Drawer {i}: sheet has fewer than 2 columns; nothing to scan for 'removed'.")
-                continue
-
-            # Identify second column (index 1) and filter rows where it contains 'removed' (case-insensitive)
-            second_col = df.columns[1]
-            try:
-                mask = df[second_col].astype(str).str.lower().str.contains("removed", na=False)
-            except Exception:
-                # Fallback: treat values as strings and perform a basic check
-                mask = df[second_col].astype(str).str.lower().str.contains("removed", na=False)
-
-            filtered = df[mask].reset_index(drop=True)
-
-            if filtered.empty:
-                st.write("No 'removed' listings found in this drawer.")
+                # spacer so heights remain consistent
+                components.html(f'<div style="height:{row_table_height}px;"></div>', height=8)
             else:
-                # display up to first 6 columns for visual consistency (but keep full data intact if needed)
-                if filtered.shape[1] > 6:
-                    filtered_display = filtered.iloc[:, :6].copy()
+                df, used_url, status, snippet = fetch_sheet_csv(sheet_url)
+                if df is None:
+                    st.warning(f"Drawer {i}: failed to load sheet. Last status: {status}")
+                    if used_url:
+                        st.write(f"Last tried URL: {used_url}")
+                    if snippet:
+                        st.code(snippet)
+                    components.html(f'<div style="height:{row_table_height}px;"></div>', height=8)
                 else:
-                    filtered_display = filtered.copy()
-                st.dataframe(filtered_display)
+                    # If sheet has fewer than 2 columns, cannot scan column 2
+                    if df.shape[1] < 2:
+                        st.info(f"Drawer {i}: sheet has fewer than 2 columns; nothing to scan for 'removed'.")
+                        components.html(f'<div style="height:{row_table_height}px;"></div>', height=8)
+                    else:
+                        second_col = df.columns[1]
+                        try:
+                            mask = df[second_col].astype(str).str.lower().str.contains("removed", na=False)
+                        except Exception:
+                            mask = df[second_col].astype(str).str.lower().str.contains("removed", na=False)
 
-    # Right column: images stacked vertically (Drawer 1..7), requested size 250x191
-    with right_col:
-        for i in range(1, 8):
+                        filtered = df[mask].reset_index(drop=True)
+                        if filtered.empty:
+                            st.write("No 'removed' listings found in this drawer.")
+                            components.html(f'<div style="height:{row_table_height}px;"></div>', height=8)
+                        else:
+                            if filtered.shape[1] > 6:
+                                filtered_display = filtered.iloc[:, :6].copy()
+                            else:
+                                filtered_display = filtered.copy()
+                            # show dataframe with fixed height so the adjacent image aligns
+                            st.dataframe(filtered_display, height=row_table_height)
+
+        # RIGHT: image sized 250x191
+        with right_col:
             img_path = DRAWER_IMAGES.get(i)
             if img_path and os.path.exists(img_path):
                 img_html = embed_local_image_html(img_path, width=250, height=191)
                 if img_html:
-                    # small height allowance for the component to display the image comfortably
-                    components.html(img_html, height=200)
+                    components.html(img_html, height=row_table_height)
                 else:
-                    st.image(img_path, width=250)
+                    st.image(img_path, width=250, caption=f"Drawer {i}")
+                    components.html(f'<div style="height:{row_table_height - 24}px;"></div>', height=8)
             else:
                 placeholder = f"https://via.placeholder.com/250x191.png?text=Drawer+{i}"
-                components.html(f'<div style="text-align:center;"><img src="{placeholder}" width="250" height="191" style="object-fit:cover; border-radius:6px;" /></div>', height=200)
+                components.html(f'<div style="text-align:center;"><img src="{placeholder}" width="250" height="191" style="object-fit:cover; border-radius:6px;" /></div>', height=row_table_height)
 
 def show_admin_panel():
     st.subheader("Admin Panel")
