@@ -262,8 +262,16 @@ def show_usage_history():
     df[first_col] = pd.to_numeric(df[first_col], errors='coerce')
     df_sorted = df.sort_values(by=first_col, ascending=True, na_position='last').reset_index(drop=True)
 
+    # --- Display only up to 6 columns in the UI, but keep the full dataframe for download/logic ---
+    if df_sorted.shape[1] > 6:
+        df_display = df_sorted.iloc[:, :6].copy()
+    else:
+        df_display = df_sorted.copy()
+
     st.success(f"Loaded sheet from: {used_url}  (rows: {len(df_sorted)}, cols: {len(df_sorted.columns)})")
-    st.dataframe(df_sorted)
+    # Show only the first 6 columns (or fewer if sheet has <6 cols)
+    st.dataframe(df_display)
+    # Keep download as full CSV to avoid changing sheet export logic
     st.download_button("Download sheet CSV", data=df_sorted.to_csv(index=False).encode("utf-8"), file_name=f"drawer_{selected}.csv", mime="text/csv")
 
 def show_inventory_data():
