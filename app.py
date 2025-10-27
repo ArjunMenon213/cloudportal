@@ -134,6 +134,27 @@ st.markdown(
     <style>
     .tab-button { padding:6px 8px; border-radius:6px; }
     .status-pill { display:inline-block; padding:6px 12px; border-radius:14px; color:#ffffff; font-weight:700; background:#16a34a; }
+    .passcode-box {
+      display:block;
+      width:100%;
+      background-color:#16a34a;
+      color:#ffffff;
+      padding:18px;
+      border-radius:8px;
+      text-align:center;
+      font-weight:800;
+      font-size:36px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+    }
+    .edit-link-btn {
+      display:inline-block;
+      padding:10px 16px;
+      background:#2563eb;
+      color:#fff;
+      border-radius:6px;
+      text-decoration:none;
+      font-weight:700;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -399,18 +420,22 @@ def show_missing_items():
 
 def show_admin_panel():
     """
-    Replaced previous admin content entirely as requested.
-    - Shows the PASSCODE line exactly as specified.
-    - Shows title "current customers with access".
-    - Loads the provided Google Sheet and displays it using the existing fetch/export logic.
-    - UI displays only up to 6 columns (consistent with other sheet displays) but the full CSV is available for download.
+    Admin panel redesigned per request:
+      - Large green highlighted passcode "3721"
+      - Horizontal separator
+      - "current customers with access" sheet loaded using the same fetch logic
+      - After the sheet, an "Edit Customer access Credentials" button that links to the Google Sheet URL
     """
     st.subheader("Admin Panel")
 
-    # Exact text requested
-    st.markdown("**CURrent ACCESS PASSCODE , all Utilities : 3721**")
+    # Large green highlighted passcode
+    # using the CSS class defined earlier .passcode-box
+    st.markdown('<div class="passcode-box">3721</div>', unsafe_allow_html=True)
 
-    # Title for the sheet
+    # horizontal separator
+    st.markdown("---")
+
+    # Title
     st.markdown("### current customers with access")
 
     # Load and display the provided Google Sheet using existing fetch logic
@@ -429,7 +454,7 @@ def show_admin_panel():
         st.info("Common fixes: set the sheet's Share → 'Anyone with the link' → Viewer, or Publish → 'Publish to web' for that sheet/tab.")
         return
 
-    # Display only first 6 columns in the UI for consistency
+    # Display only first 6 columns in the UI for consistency (full CSV available for download)
     if df.shape[1] > 6:
         df_display = df.iloc[:, :6].copy()
     else:
@@ -438,6 +463,15 @@ def show_admin_panel():
     st.success(f"Loaded sheet from: {used_url}  (rows: {len(df)}, cols: {len(df.columns)})")
     st.dataframe(df_display)
     st.download_button("Download customers CSV", data=df.to_csv(index=False).encode("utf-8"), file_name="current_customers.csv", mime="text/csv")
+
+    # "Edit Customer access Credentials" button linking to the sheet
+    # Use an HTML anchor styled as a button to open the sheet in a new tab
+    edit_button_html = f'''
+      <div style="margin-top:12px;">
+        <a class="edit-link-btn" href="{CUSTOMER_SHEET_URL}" target="_blank" rel="noopener noreferrer">Edit Customer access Credentials</a>
+      </div>
+    '''
+    st.markdown(edit_button_html, unsafe_allow_html=True)
 
 # Render selected pane
 with pane:
