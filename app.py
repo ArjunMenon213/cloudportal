@@ -3,6 +3,7 @@ import pandas as pd
 import altair as alt
 from datetime import datetime, timedelta
 import streamlit.components.v1 as components
+import re
 
 st.set_page_config(page_title="TRACKER", layout="wide")
 
@@ -25,6 +26,30 @@ def init_data():
     users = ["alice", "bob", "charlie", "admin"]
     return inventory, usage, users
 
+# Google Sheets links for drawers (as provided)
+DRAWER_URLS = {
+    1: "https://docs.google.com/spreadsheets/d/1tbGORyBH36yx2R_iR1IYcHu4MwbSKrfE/edit?usp=drive_link&ouid=115545081311750015459&rtpof=true&sd=true",
+    2: "https://docs.google.com/spreadsheets/d/1JOYSm855CuvnA6d-QXZC82Vpe0BrlrWi/edit?usp=sharing&ouid=115545081311750015459&rtpof=true&sd=true",
+    3: "https://docs.google.com/spreadsheets/d/10Y_HRew2IdvVlXMe8Kf5RFJGAieZtllC/edit?usp=drive_link&ouid=115545081311750015459&rtpof=true&sd=true",
+    4: "https://docs.google.com/spreadsheets/d/1Zsv2g7p_kb_Vmt2R5iD5G9GBbhmwLZSF/edit?usp=drive_link&ouid=115545081311750015459&rtpof=true&sd=true",
+    5: "https://docs.google.com/spreadsheets/d/1m06qyNzwYF_0fZnFpZA0QSpiumqdsHtr/edit?usp=drive_link&ouid=115545081311750015459&rtpof=true&sd=true",
+    6: "https://docs.google.com/spreadsheets/d/1wJU5SC9VL5yeewjZivBRbyO3LtiXrVA9/edit?usp=sharing&ouid=115545081311750015459&rtpof=true&sd=true",
+    7: "https://docs.google.com/spreadsheets/d/1Dc0myxSLB_dTSR-eFE4BZ8ZjqnSpDBkA/edit?usp=sharing&ouid=115545081311750015459&rtpof=true&sd=true",
+}
+
+def extract_sheet_embed_url(sheet_url: str) -> str:
+    """
+    Try to build an embeddable URL for a Google Sheet.
+    Best-effort: extract the doc id and use the /preview path which usually works for public/shareable sheets.
+    """
+    # extract id from /d/<id>/
+    m = re.search(r"/d/([a-zA-Z0-9-_]+)", sheet_url)
+    if not m:
+        return sheet_url  # fallback to original
+    _id = m.group(1)
+    # Use preview path which is commonly embeddable:
+    return f"https://docs.google.com/spreadsheets/d/{_id}/preview"
+
 # Initialize demo data and state
 if "inventory_df" not in st.session_state:
     inv, usage, users = init_data()
@@ -33,13 +58,16 @@ if "inventory_df" not in st.session_state:
     st.session_state.users = users
     st.session_state.selected = "Status"
     st.session_state.master_control = True
+    # default no drawer selected
+    st.session_state.selected_drawer = None
 
-# Minimal styling: keep Streamlit defaults for typography; only style the ONLINE pill slightly.
+# Minimal styling: keep Streamlit defaults for typography; only style ONLINE pill slightly.
 st.markdown(
     """
     <style>
     .tab-button { padding:6px 8px; border-radius:6px; }
     .status-pill { display:inline-block; padding:6px 12px; border-radius:14px; color:#ffffff; font-weight:700; background:#16a34a; }
+    .drawer-btn { width:100%; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -60,8 +88,6 @@ pane = st.container()
 def show_status():
     st.subheader("Status Panel")
 
-    # Use Streamlit default text sizes and coloring by avoiding custom CSS for labels/values.
-    # Layout with two columns so label : value appear on one horizontal line each.
     # Row 1: Current Status - green pill
     c1, c2 = st.columns([2, 4])
     with c1:
@@ -78,7 +104,7 @@ def show_status():
         st.write("ON" if master else "OFF")
         st.session_state.master_control = master
 
-    # Row 3: Current Time - show browser time via client-side JS; no custom font sizing so Streamlit default applies
+    # Row 3: Current Time - show browser time via client-side JS
     c1, c2 = st.columns([2, 4])
     with c1:
         st.write("3. Current Time")
@@ -117,21 +143,44 @@ def show_status():
 
 def show_usage_history():
     """
-    Replaced previous usage history content with seven 'Drawer' buttons,
-    as requested: Drawer 1 ... Drawer 7.
+    Render 7 horizontal drawer buttons (Drawer 1 .. Drawer 7).
+    When a drawer button is pressed, set session_state.selected_drawer to that number.
+    Below the buttons, embed the corresponding Google Sheet (using a best-effort preview/embed URL).
     """
     st.subheader("Usage History")
 
-    st.write("Select a drawer:")
-    # Display the 7 drawer buttons (vertically). Clicking a button stores last selection in session_state.
-    for i in range(1, 8):
-        if st.button(f"Drawer {i}", key=f"drawer_{i}"):
-            st.session_state["last_drawer_selected"] = i
-            st.success(f"Drawer {i} clicked")
+    st.write("Select a drawer to view its sheet:")
 
-    # Optionally show last clicked drawer
-    if "last_drawer_selected" in st.session_state:
-        st.info(f"Last selected: Drawer {st.session_state['last_drawer_selected']}")
+    # Horizontal row of 7 buttons
+    cols = st.columns(7, gap="small")
+    for i in range(1, 8):
+        with cols[i-1]:
+            if st.button(f"Drawer {i}", key=f"drawer_btn_{i}"):
+                st.session_state.selected_drawer = i
+
+    # Panel: embed selected sheet (or show informational message)
+    st.markdown("---")
+    if st.session_state.selected_drawer is None:
+        st.info("No drawer selected. Click a drawer button above to load its sheet.")
+        return
+
+    selected = st.session_state.selected_drawer
+    st.write(f"Displaying: Drawer {selected}")
+
+    sheet_url = DRAWER_URLS.get(selected)
+    if not sheet_url:
+        st.error("URL for selected drawer not found.")
+        return
+
+    embed_url = extract_sheet_embed_url(sheet_url)
+
+    # Embed the Google Sheet in an iframe. Height can be adjusted as needed.
+    iframe_html = f"""
+    <div style="width:100%;">
+      <iframe src="{embed_url}" style="width:100%; height:720px; border:0;" allowfullscreen></iframe>
+    </div>
+    """
+    components.html(iframe_html, height=740)
 
 def show_inventory_data():
     st.subheader("Inventory Data")
@@ -212,6 +261,7 @@ def show_admin_panel():
         st.session_state.usage_df = usage
         st.session_state.users = users
         st.session_state.master_control = True
+        st.session_state.selected_drawer = None
         st.success("Demo data reset.")
         st.experimental_rerun()
 
