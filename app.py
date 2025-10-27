@@ -430,7 +430,7 @@ def show_admin_panel():
 
     # Large green highlighted passcode
     # using the CSS class defined earlier .passcode-box
-    st.markdown('<div class="passcode-box">3721</div>', unsafe_allow_html=True)
+    st.markdown('<div class="passcode-box">Current Access PASSCODE, all utilities: 3721</div>', unsafe_allow_html=True)
 
     # horizontal separator
     st.markdown("---")
