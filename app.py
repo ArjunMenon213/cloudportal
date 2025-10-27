@@ -90,6 +90,29 @@ def embed_local_image_html(path: str, width: int = 400, height: int = 306):
     except Exception:
         return None
 
+def embed_local_image_responsive_html(path: str, max_width_px: int = 900, display_height_px: int = None):
+    """
+    Render a local file as a responsive image: width constrained by container,
+    preserving aspect ratio. If display_height_px provided, set component height (for Streamlit).
+    """
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+        b64 = base64.b64encode(data).decode("utf-8")
+        ext = os.path.splitext(path)[1].lower().lstrip(".")
+        mime = f"image/{'jpeg' if ext in ['jpg','jpeg'] else ext}"
+        # Use max-width to make image responsive and avoid clipping; height:auto preserves aspect ratio.
+        html = f"""
+        <div style="display:flex; justify-content:flex-start; align-items:center;">
+          <img src="data:{mime};base64,{b64}" style="max-width:{max_width_px}px; width:100%; height:auto; border-radius:6px; display:block;" />
+        </div>
+        """
+        return html
+    except Exception:
+        return None
+
 def fetch_sheet_csv(sheet_url: str):
     doc_id = extract_doc_id(sheet_url)
     if not doc_id:
@@ -170,23 +193,26 @@ st.markdown(
 # -------------------------
 # Top banner + title row
 # -------------------------
-# Show .jpganner.png on the top-left beside the title. File expected at repo root as "topbanner.png".
-left_col, right_col = st.columns([1, 8], gap="small")
-with left_col:
-    banner_path = "topbanner.png"
-    if os.path.exists(banner_path):
-        banner_html = embed_local_image_html(banner_path, width=600, height=106)
-        if banner_html:
-            components.html(banner_html, height=70)
-        else:
-            st.image(banner_path, width=120)
+# Show topbanner.png full width (responsive) and put the TITLE underneath it so the banner
+# is fully visible and the title appears below.
+banner_path = "topbanner.png"
+if os.path.exists(banner_path):
+    banner_html = embed_local_image_responsive_html(banner_path, max_width_px=900)
+    if banner_html:
+        # set height a bit larger to ensure the component isn't clipped; height is advisory
+        components.html(banner_html, height=160)
     else:
-        # fallback placeholder if banner not found locally
-        components.html(f'<div style="text-align:left;"><img src="https://via.placeholder.com/120x60.png?text=Banner" width="120" height="60" style="object-fit:cover; border-radius:6px; display:block;" /></div>', height=70)
+        # fallback to st.image if embedding as HTML failed
+        st.image(banner_path, use_column_width=True)
+else:
+    # placeholder if banner not found
+    components.html(
+        '<div style="display:flex; justify-content:flex-start; align-items:center;"><img src="https://via.placeholder.com/900x160.png?text=Banner" style="max-width:900px; width:100%; height:auto; border-radius:6px;" /></div>',
+        height=160,
+    )
 
-with right_col:
-    # Keep the title alongside the banner
-    st.markdown(f"<h1 style='margin:8px 0 0 8px;'>{TITLE}</h1>", unsafe_allow_html=True)
+# Title placed under the banner (left aligned)
+st.markdown(f"<h1 style='margin:12px 0 12px 0; text-align:left;'>{TITLE}</h1>", unsafe_allow_html=True)
 
 # Top nav bar
 options = ["Status", "Usage History", "Inventory Data", "Missing Items", "Admin Panel"]
@@ -197,7 +223,6 @@ for i, opt in enumerate(options):
             st.session_state.selected = opt
 
 # Auto-lock admin when navigating away from Admin Panel
-# If the currently selected pane is not Admin Panel, ensure admin_unlocked is False.
 if st.session_state.get("selected") != "Admin Panel" and st.session_state.get("admin_unlocked", False):
     st.session_state.admin_unlocked = False
 
@@ -423,7 +448,7 @@ def show_missing_items():
 def show_admin_panel():
     """
     Admin panel locked behind passcode "3721".
-    Auto-locks when the user navigates away by clicking another top-nav button.
+    Auto-locks when the user navigates away from Admin Panel.
     """
     st.subheader("Admin Panel")
 
@@ -436,14 +461,13 @@ def show_admin_panel():
             if entered == "3721":
                 st.session_state.admin_unlocked = True
                 st.success("Admin panel unlocked.")
-                # rely on Streamlit rerun triggered by the button click; return so the unlocked view will appear next run
                 return
             else:
                 st.error("Incorrect passcode.")
                 return
         return
 
-    # Unlocked view: no "Lock Admin Panel" button — admin will be auto-locked when navigating away.
+    # Unlocked view
     st.markdown('<div class="passcode-box">3721</div>', unsafe_allow_html=True)
 
     st.markdown("---")
