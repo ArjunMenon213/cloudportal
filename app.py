@@ -44,6 +44,9 @@ DRAWER_URLS = {
 # Local images in repo: tools-drawer1.jpg ... tools-drawer7.jpg
 DRAWER_IMAGES = {i: f"tools-drawer{i}.jpg" for i in range(1, 8)}
 
+# Customer sheet URL for Admin panel (as requested)
+CUSTOMER_SHEET_URL = "https://docs.google.com/spreadsheets/d/1zpeOkT6cBPOMlVWeqHG9YLpEaT8YTIse/edit?usp=sharing&ouid=115545081311750015459&rtpof=true&sd=true"
+
 def extract_doc_id(sheet_url: str) -> str:
     m = re.search(r"/d/([a-zA-Z0-9-_]+)", sheet_url)
     return m.group(1) if m else ""
@@ -395,39 +398,46 @@ def show_missing_items():
                 components.html(f'<div style="text-align:center;"><img src="{placeholder}" width="250" height="191" style="object-fit:cover; border-radius:6px;" /></div>', height=row_table_height)
 
 def show_admin_panel():
+    """
+    Replaced previous admin content entirely as requested.
+    - Shows the PASSCODE line exactly as specified.
+    - Shows title "current customers with access".
+    - Loads the provided Google Sheet and displays it using the existing fetch/export logic.
+    - UI displays only up to 6 columns (consistent with other sheet displays) but the full CSV is available for download.
+    """
     st.subheader("Admin Panel")
-    st.write("Manage users and global settings. This is a simplified admin view for the demo.")
-    st.write("Registered users")
-    st.dataframe(pd.DataFrame({"user": st.session_state.users}))
 
-    with st.form("add_user"):
-        new_user = st.text_input("Add user (username)")
-        add_submitted = st.form_submit_button("Add user")
-        if add_submitted and new_user:
-            if new_user in st.session_state.users:
-                st.warning("User already exists.")
-            else:
-                st.session_state.users.append(new_user)
-                st.success(f"User '{new_user}' added.")
+    # Exact text requested
+    st.markdown("**CURrent ACCESS PASSCODE , all Utilities : 3721**")
 
-    with st.form("remove_user"):
-        remove_user = st.selectbox("Remove user", options=[""] + st.session_state.users)
-        remove_submitted = st.form_submit_button("Remove user")
-        if remove_submitted and remove_user:
-            st.session_state.users = [u for u in st.session_state.users if u != remove_user]
-            st.success(f"User '{remove_user}' removed.")
+    # Title for the sheet
+    st.markdown("### current customers with access")
 
-    st.markdown("---")
-    st.write("Danger zone")
-    if st.button("Reset demo data (in-session only)"):
-        inv, usage, users = init_data()
-        st.session_state.inventory_df = inv
-        st.session_state.usage_df = usage
-        st.session_state.users = users
-        st.session_state.master_control = True
-        st.session_state.selected_drawer = None
-        st.success("Demo data reset.")
-        st.experimental_rerun()
+    # Load and display the provided Google Sheet using existing fetch logic
+    st.write("Loading customers sheet... (attempting multiple export endpoints)")
+    df, used_url, status, snippet = fetch_sheet_csv(CUSTOMER_SHEET_URL)
+
+    if df is None:
+        st.error("Failed to load customers sheet.")
+        if status:
+            st.write(f"Last HTTP status: {status}")
+        if used_url:
+            st.write(f"Last tried URL: {used_url}")
+        if snippet:
+            st.write("Response / error snippet (truncated):")
+            st.code(snippet)
+        st.info("Common fixes: set the sheet's Share → 'Anyone with the link' → Viewer, or Publish → 'Publish to web' for that sheet/tab.")
+        return
+
+    # Display only first 6 columns in the UI for consistency
+    if df.shape[1] > 6:
+        df_display = df.iloc[:, :6].copy()
+    else:
+        df_display = df.copy()
+
+    st.success(f"Loaded sheet from: {used_url}  (rows: {len(df)}, cols: {len(df.columns)})")
+    st.dataframe(df_display)
+    st.download_button("Download customers CSV", data=df.to_csv(index=False).encode("utf-8"), file_name="current_customers.csv", mime="text/csv")
 
 # Render selected pane
 with pane:
