@@ -421,39 +421,39 @@ def show_missing_items():
 
 def show_admin_panel():
     """
-    Admin panel now locked behind a passcode.
-    - To view admin content the user must enter passcode "3721".
-    - Successful unlock sets st.session_state.admin_unlocked = True.
-    - When unlocked, the previous admin layout is displayed (passcode box, sheet, edit link).
-    - A 'Lock Admin Panel' button is available to lock it again.
+    Admin panel locked behind the passcode; removed use of st.experimental_rerun() to avoid AttributeError.
+    - Enter passcode "3721" to unlock the admin panel.
+    - When unlocked, shows the large green passcode box, customers sheet, download button,
+      and an 'Edit Customer access Credentials' link to open the sheet.
+    - Use the "Lock Admin Panel" button to lock again (session-only).
     """
     st.subheader("Admin Panel")
 
-    # If not unlocked, show passcode entry UI and return
-    if not st.session_state.get("admin_unlocked", False):
+    unlocked = st.session_state.get("admin_unlocked", False)
+
+    # If not unlocked, show passcode entry UI
+    if not unlocked:
         st.write("Admin access requires passcode.")
-        # Use a password-style input
         entered = st.text_input("Enter passcode to unlock admin panel", type="password", key="admin_pass_input")
         if st.button("Unlock Admin Panel"):
             if entered == "3721":
                 st.session_state.admin_unlocked = True
                 st.success("Admin panel unlocked.")
-                # rerun so the unlocked UI appears immediately
-                st.experimental_rerun()
+                # No st.experimental_rerun() call — Streamlit will rerun on the button click automatically.
+                return
             else:
                 st.error("Incorrect passcode.")
-        # Provide a small hint toggle (optional) - do not expose passcode
-        return
+                return
 
-    # Admin is unlocked: show content
-    # Large green highlighted passcode box (as requested)
+    # If we get here, admin_unlocked is True
+    # Large green highlighted passcode box
     st.markdown('<div class="passcode-box">3721</div>', unsafe_allow_html=True)
 
     # Lock button so admin can lock the panel explicitly
     if st.button("Lock Admin Panel"):
         st.session_state.admin_unlocked = False
         st.success("Admin panel locked.")
-        st.experimental_rerun()
+        return
 
     # horizontal separator
     st.markdown("---")
@@ -494,22 +494,4 @@ def show_admin_panel():
       </div>
     '''
     st.markdown(edit_button_html, unsafe_allow_html=True)
-
-# Render selected pane
-with pane:
-    selected = st.session_state.selected
-    if selected == "Status":
-        show_status()
-    elif selected == "Usage History":
-        show_usage_history()
-    elif selected == "Inventory Data":
-        show_inventory_data()
-    elif selected == "Missing Items":
-        show_missing_items()
-    elif selected == "Admin Panel":
-        show_admin_panel()
-    else:
-        st.write("Select a section from the bar above.")
-
-st.markdown("----")
 st.caption("This is a demo Streamlit app. Data is stored only for the current session. For production use, connect to a database and add authentication.")
