@@ -473,7 +473,7 @@ def show_admin_panel():
         return
 
     # Unlocked view
-    st.markdown('<div class="passcode-box">3721</div>', unsafe_allow_html=True)
+    st.markdown('<div class="passcode-box">Current Passcode for all utilities : 3721</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("### current customers with access")
