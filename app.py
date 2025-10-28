@@ -189,23 +189,7 @@ st.markdown(
       font-weight:700;
     }
 
-    /* New: make external link look visually similar to the internal Streamlit nav buttons */
-    .nav-external {
-      display:inline-block;
-      padding:6px 10px;
-      border-radius:6px;
-      background: #f0f2f6;   /* light neutral background like Streamlit buttons */
-      color: #0f172a;        /* near-black text */
-      border: 1px solid #d9dde3;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 14px;
-      line-height: 1;
-    }
-    .nav-external:hover {
-      background: #e6e9ef;
-      color: #0f172a;
-    }
+    /* Keep previous nav-external removed; we now open external URL via JS when the nav button is clicked */
     </style>
     """,
     unsafe_allow_html=True,
@@ -229,17 +213,18 @@ else:
 
 st.markdown(f"<h1 style='margin:12px 0 12px 0; text-align:left;'>{TITLE}</h1>", unsafe_allow_html=True)
 
-# Top nav bar (now includes the external "Create Custom Tool-Cutout" link as the last item)
+# Top nav bar: include "Create Custom Tool-Cutout" as a regular Streamlit button so styling matches exactly.
 options = ["Status", "Usage History", "Inventory Data", "Missing Items", "Admin Panel", "Create Custom Tool-Cutout"]
 cols = st.columns([1] * len(options), gap="small")
 for i, opt in enumerate(options):
     with cols[i]:
-        if opt == "Create Custom Tool-Cutout":
-            # Use a styled anchor that visually matches the internal nav buttons
-            html = f'<a class="nav-external" href="{CUSTOM_TOOL_CUTOUT_URL}" target="_blank" rel="noopener noreferrer">{opt}</a>'
-            st.markdown(html, unsafe_allow_html=True)
-        else:
-            if st.button(opt, key=f"btn_{opt}"):
+        if st.button(opt, key=f"btn_{opt}"):
+            # If external item clicked, open in new tab using JS and DO NOT change selected pane.
+            if opt == "Create Custom Tool-Cutout":
+                # Use components.html to trigger window.open() in the browser.
+                # Keep selected unchanged (so the app view doesn't navigate away).
+                components.html(f"<script>window.open('{CUSTOM_TOOL_CUTOUT_URL}', '_blank');</script>", height=0)
+            else:
                 st.session_state.selected = opt
 
 # Auto-lock admin when navigating away from Admin Panel
