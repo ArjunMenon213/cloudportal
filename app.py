@@ -50,6 +50,9 @@ DRAWER_IMAGES = {i: f"tools-drawer{i}.jpg" for i in range(1, 8)}
 
 CUSTOMER_SHEET_URL = "https://docs.google.com/spreadsheets/d/1zpeOkT6cBPOMlVWeqHG9YLpEaT8YTIse/edit?usp=sharing&ouid=115545081311750015459&rtpof=true&sd=true"
 
+# External custom tool-cutout URL (per your request)
+CUSTOM_TOOL_CUTOUT_URL = "https://trackertoolcutter.streamlit.app/"
+
 # -------------------------
 # Helpers
 # -------------------------
@@ -185,6 +188,15 @@ st.markdown(
       text-decoration:none;
       font-weight:700;
     }
+    .external-btn {
+      display:inline-block;
+      padding:8px 12px;
+      background:#0ea5a4;
+      color:#fff;
+      border-radius:6px;
+      text-decoration:none;
+      font-weight:700;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -214,13 +226,20 @@ else:
 # Title placed under the banner (left aligned)
 st.markdown(f"<h1 style='margin:12px 0 12px 0; text-align:left;'>{TITLE}</h1>", unsafe_allow_html=True)
 
-# Top nav bar
-options = ["Status", "Usage History", "Inventory Data", "Missing Items", "Admin Panel"]
-cols = st.columns([1,1,1,1,1], gap="small")
+# Top nav bar (now includes the external "Create Custom Tool-Cutout" link as the last item)
+options = ["Status", "Usage History", "Inventory Data", "Missing Items", "Admin Panel", "Create Custom Tool-Cutout"]
+# create equal-width columns for all nav items
+cols = st.columns([1] * len(options), gap="small")
 for i, opt in enumerate(options):
     with cols[i]:
-        if st.button(opt, key=f"btn_{opt}"):
-            st.session_state.selected = opt
+        if opt == "Create Custom Tool-Cutout":
+            # render as an HTML link styled as a button that opens in a new tab
+            html = f'<a class="external-btn" href="{CUSTOM_TOOL_CUTOUT_URL}" target="_blank" rel="noopener noreferrer">{opt}</a>'
+            st.markdown(html, unsafe_allow_html=True)
+        else:
+            # regular internal navigation button
+            if st.button(opt, key=f"btn_{opt}"):
+                st.session_state.selected = opt
 
 # Auto-lock admin when navigating away from Admin Panel
 if st.session_state.get("selected") != "Admin Panel" and st.session_state.get("admin_unlocked", False):
@@ -468,7 +487,7 @@ def show_admin_panel():
         return
 
     # Unlocked view
-    st.markdown('<div class="passcode-box">Current access passcode for all utilities: 3721</div>', unsafe_allow_html=True)
+    st.markdown('<div class="passcode-box">3721</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("### current customers with access")
