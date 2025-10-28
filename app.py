@@ -188,14 +188,23 @@ st.markdown(
       text-decoration:none;
       font-weight:700;
     }
-    .external-btn {
+
+    /* New: make external link look visually similar to the internal Streamlit nav buttons */
+    .nav-external {
       display:inline-block;
-      padding:8px 12px;
-      background:#0ea5a4;
-      color:#fff;
+      padding:6px 10px;
       border-radius:6px;
-      text-decoration:none;
-      font-weight:700;
+      background: #f0f2f6;   /* light neutral background like Streamlit buttons */
+      color: #0f172a;        /* near-black text */
+      border: 1px solid #d9dde3;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      line-height: 1;
+    }
+    .nav-external:hover {
+      background: #e6e9ef;
+      color: #0f172a;
     }
     </style>
     """,
@@ -205,39 +214,31 @@ st.markdown(
 # -------------------------
 # Top banner + title row
 # -------------------------
-# Show topbanner.png full width (responsive) and put the TITLE underneath it so the banner
-# is fully visible and the title appears below.
 banner_path = "topbanner.png"
 if os.path.exists(banner_path):
     banner_html = embed_local_image_responsive_html(banner_path, max_width_px=900)
     if banner_html:
-        # set height a bit larger to ensure the component isn't clipped; height is advisory
         components.html(banner_html, height=160)
     else:
-        # fallback to st.image if embedding as HTML failed
         st.image(banner_path, use_column_width=True)
 else:
-    # placeholder if banner not found
     components.html(
         '<div style="display:flex; justify-content:flex-start; align-items:center;"><img src="https://via.placeholder.com/900x160.png?text=Banner" style="max-width:900px; width:100%; height:auto; border-radius:6px;" /></div>',
         height=160,
     )
 
-# Title placed under the banner (left aligned)
 st.markdown(f"<h1 style='margin:12px 0 12px 0; text-align:left;'>{TITLE}</h1>", unsafe_allow_html=True)
 
 # Top nav bar (now includes the external "Create Custom Tool-Cutout" link as the last item)
 options = ["Status", "Usage History", "Inventory Data", "Missing Items", "Admin Panel", "Create Custom Tool-Cutout"]
-# create equal-width columns for all nav items
 cols = st.columns([1] * len(options), gap="small")
 for i, opt in enumerate(options):
     with cols[i]:
         if opt == "Create Custom Tool-Cutout":
-            # render as an HTML link styled as a button that opens in a new tab
-            html = f'<a class="external-btn" href="{CUSTOM_TOOL_CUTOUT_URL}" target="_blank" rel="noopener noreferrer">{opt}</a>'
+            # Use a styled anchor that visually matches the internal nav buttons
+            html = f'<a class="nav-external" href="{CUSTOM_TOOL_CUTOUT_URL}" target="_blank" rel="noopener noreferrer">{opt}</a>'
             st.markdown(html, unsafe_allow_html=True)
         else:
-            # regular internal navigation button
             if st.button(opt, key=f"btn_{opt}"):
                 st.session_state.selected = opt
 
@@ -248,7 +249,7 @@ if st.session_state.get("selected") != "Admin Panel" and st.session_state.get("a
 pane = st.container()
 
 # -------------------------
-# Page panes
+# Page panes (unchanged)
 # -------------------------
 def show_status():
     st.subheader("Status Panel")
