@@ -228,8 +228,8 @@ for i, opt in enumerate(options):
                 st.session_state.selected = opt
 
 # Auto-lock admin when navigating away from Admin Panel
-if st.session_state.get("selected") != "Admin Panel" and st.session_state.get("admin_ed", False):
-    st.session_state.admin_ed = False
+if st.session_state.get("selected") != "Admin Panel" and st.session_state.get("admin_unlocked", False):
+    st.session_state.admin_unlocked = False
 
 pane = st.container()
 
@@ -457,12 +457,12 @@ def show_admin_panel():
     """
     st.subheader("Admin Panel")
 
-    ed = st.session_state.get("admin_ed", False)
+    unlocked = st.session_state.get("admin_unlocked", False)
 
-    if not ed:
+    if not unlocked:
         st.write("Admin access requires passcode.")
-        entered = st.text_input("Enter passcode to  admin panel [PRESS UNLOCK BUTTON TWICE] ", type="password", key="admin_pass_input")
-        if st.button(" Admin Panel"):
+        entered = st.text_input("Enter passcode to unlock admin panel", type="password", key="admin_pass_input")
+        if st.button("Unlock Admin Panel"):
             if entered == "3721":
                 st.session_state.admin_unlocked = True
                 st.success("Admin panel unlocked.")
@@ -473,6 +473,7 @@ def show_admin_panel():
         return
 
     # Unlocked view
+    st.markdown('<div class="passcode-box">3721</div>', unsafe_allow_html=True)
     st.markdown('<div class="passcode-box">Current Passcode for all utilities : 3721</div>', unsafe_allow_html=True)
 
     st.markdown("---")
