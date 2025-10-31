@@ -461,7 +461,7 @@ def show_admin_panel():
 
     if not unlocked:
         st.write("Admin access requires passcode.")
-        entered = st.text_input("Enter passcode to unlock admin panel", type="password", key="admin_pass_input")
+        entered = st.text_input("Enter passcode to unlock admin panel [CLICK UNLOCK BUTTON TWICE TO UNLOCK]", type="password", key="admin_pass_input")
         if st.button("Unlock Admin Panel"):
             if entered == "3721":
                 st.session_state.admin_unlocked = True
